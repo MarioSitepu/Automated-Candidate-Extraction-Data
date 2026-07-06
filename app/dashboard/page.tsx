@@ -3,15 +3,20 @@
 "use client"; 
 
 import {useRouter} from "next/navigation"; // panggil useRouter
+import {logoutUser} from "../actions/auth";
+
 
 export default function DashboardPage() {
     const router = useRouter(); // deklarasi router
 
     //fungsi dialankan pada saat klik tombol
-    const handleLogout = () => {
-        alert("Kamu telah Logout. Kamu sedang diarahkan ke halaman login");
-        router.push("/login") //direct ke login
-    } 
+    const handleLogout = async() => { // mengubah ke async karena menyerahkan tombol logout ke backend, jadi async menunggu
+        await logoutUser();
+
+        alert("Kamu berhasil logout !");
+
+        router.push("/login"); // direct ke login 
+    }
 
     return (
         <div className="min-h-screen p-8 bg-gray-50">
