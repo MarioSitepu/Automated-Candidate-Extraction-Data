@@ -1,0 +1,22 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+//table user 
+
+model User {
+  id        Int       @id @default(autoincrement()) // id unik untuk setiap user (1,2,3, ...)
+  email     String    @unique                       // Email harus unik
+  password  String                                  // password
+  createdAt DateTime  @default(now())               // Mencatat kapan user mendaftar
+}
