@@ -12,7 +12,7 @@ export async function decrypt(token : string) {
     try {
         const { payload } = await jwtVerify(token, key);
         return payload;
-    } catch (error) {
+    } catch {
         return null;
     }
 }
