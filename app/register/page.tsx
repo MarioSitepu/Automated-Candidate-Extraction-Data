@@ -18,7 +18,7 @@ export default function RegisterPage() {
         e.preventDefault()
 
         if (password !== confirmPassword){
-            alert("Gagal mendaftar, Password dan Konfirmasi Password tidak sama!")
+            toast.error("Gagal mendaftar, Password dan Konfirmasi Password tidak sama!")
             return;
         }
 
@@ -26,12 +26,12 @@ export default function RegisterPage() {
         const hasil = await registerUser(email, password);
 
         if (hasil.success) {
-            alert(hasil.message);
+            toast.success(hasil.message);
             // kalau berhasil daftar, arahkan user ke halaman login
             router.push("/login");
         } else {
             // kalau gagal , tampilkan error
-            alert(hasil.message);
+            toast.error(hasil.message);
         }
     };
 
