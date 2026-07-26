@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { registerUser } from "../actions/auth"; // memanggil fungsi logika register akun
 import Link from "next/link" // memmbuat link ke halaman login;
+import toast from "react-hot-toast"
 
 export default function RegisterPage() {
     const router = useRouter();
@@ -11,9 +12,15 @@ export default function RegisterPage() {
     // menyimpan ketikan user dnegan usestate
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
 
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault()
+
+        if (password !== confirmPassword){
+            alert("Gagal mendaftar, Password dan Konfirmasi Password tidak sama!")
+            return;
+        }
 
         // mengirim email dan password ke backend
         const hasil = await registerUser(email, password);
@@ -54,6 +61,18 @@ export default function RegisterPage() {
                             required
                         />
                     </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Ulangi Password</label>
+                        <input 
+                            type="password"
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                            required
+                        />
+                    </div>
+
                     <button 
                         type="submit"
                         className="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600 transition"

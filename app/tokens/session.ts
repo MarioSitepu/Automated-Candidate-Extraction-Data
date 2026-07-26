@@ -4,7 +4,13 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
 // membuat session secret key , rahasia
-const secretKey = "rahasia-negara-123";
+const secretKey = process.env.SESSION_SECRET
+
+// kalau tidak ada kuncinya, matikan aplikasi dan teriak error
+if (!secretKey) {
+    throw new Error("Kode Session Pada env. Tidak Ada");
+}
+
 const key = new TextEncoder().encode(secretKey);
 
 // 1. membuat pengecekan token web

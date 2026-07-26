@@ -3,10 +3,32 @@
 import prisma from "../../lib/prisma";
 import bcrypt from "bcryptjs"
 import { createSession , deleteSession } from "@/app/tokens/session"
+import { z } from "zod" // import zod sebagai validator
 
+//instuksi untuk zod
+const registerSchema = z.object({
+    email: z.string().email("Format email tidak valid! Harus ada @."),
+    password: z.string().min(6, "Password minimal 6 karakter")
+});
+
+// menambahkan funsgi zod sebagai validator
 export async function loginUser (emailKetik : string, passwordKetik : string) {
     
     try {
+
+        //a. zod mengecek ketikan user sblm ke database
+        const cekValidasi = registerSchema.safeParse({
+            email: emailKetik,
+            password : passwordKetik
+        });
+
+        //b. jika inputan salah, zod memblokir
+        if (!cekValidasi.success) {
+            return {
+                success: false,
+                message: cekValidasi.error.issues[0].message // menampilkan pesan error
+            };
+        }
         // 1. cari user di db berdasarkan email
         const user = await prisma.user.findUnique ({
             where : {
@@ -42,6 +64,20 @@ export async function logoutUser() {
 // fungsi baru untuk daftar akun
 export async function registerUser(emailKetik: string, passwordKetik: string){
     try {
+
+        // menambahkan zod untuk validasi
+        const cekValidasi = registerSchema.safeParse({
+            email: emailKetik,
+            password: passwordKetik
+        });
+
+        if (!cekValidasi.success){
+            return { 
+                success: false,
+                message: cekValidasi.error.issues[0].message
+            };
+        }
+        
         // 1. Cek email apakah sudah ada atau belum
         const userSudahAda = await prisma.user.findUnique({
             where: { email: emailKetik }
