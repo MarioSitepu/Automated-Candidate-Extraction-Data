@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LayoutDashboard, Users, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, LogOut, UploadCloud } from "lucide-react";
 import { logoutUser } from "../actions/auth";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -29,9 +29,8 @@ export default function DashboardLayout({
             <h1 className="text-xl font-bold text-teal-800">
               Karla <br />
               <span className="text-teal-600 font-semibold text-sm">
-                biotech
-              </span>{" "}
-              Bionics
+                Bionics
+              </span>
             </h1>
             <p className="text-xs text-gray-500 mt-1">Enterprise Admin</p>
           </div>
@@ -59,6 +58,17 @@ export default function DashboardLayout({
             >
               <Users className={`w-5 h-5 ${pathname === "/dashboard/candidates" ? "text-teal-600" : ""}`} />
               <span>Candidate List</span>
+            </Link>
+            <Link
+              href="/dashboard/upload"
+              className={`flex items-center space-x-3 px-4 py-3 rounded-lg font-medium transition-colors ${
+                pathname === "/dashboard/upload" 
+                  ? "text-teal-800 bg-teal-50 border-l-4 border-teal-600 shadow-sm" 
+                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent"
+              }`}
+            >
+              <UploadCloud className={`w-5 h-5 ${pathname === "/dashboard/upload" ? "text-teal-600" : ""}`} />
+              <span>Upload Data</span>
             </Link>
           </nav>
         </div>
