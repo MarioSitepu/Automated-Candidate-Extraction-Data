@@ -83,3 +83,78 @@ export async function runVideoToText(fileId: string) {
         return { success: false, message: "Terjadi kesalahan saat ekstraksi AI: " + error.message };
     }
 }
+
+export async function uploadAndExtract(formData: FormData) {
+    const GROQ_API_KEY = process.env.GROQ_API_KEY;
+
+    if (!GROQ_API_KEY) {
+        return { success: false, message: "GROQ_API_KEY is not set in .env" };
+    }
+
+    const file = formData.get('file') as File;
+    if (!file) {
+        return { success: false, message: "No file uploaded" };
+    }
+
+    const timestamp = Date.now();
+    const inputExt = path.extname(file.name) || '.mp4';
+    const inputFilePath = path.join(process.cwd(), `tmp_upload_${timestamp}${inputExt}`);
+    const outputAudio = path.join(process.cwd(), `audio_${timestamp}.mp3`);
+
+    try {
+        // Step 1: Save the uploaded file to disk
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        await fs.writeFile(inputFilePath, buffer);
+
+        // Step 2: Compress and extract audio via FFmpeg
+        console.log("1. Compressing and extracting audio via FFmpeg (Local File)...");
+        const args = [
+            "-i", inputFilePath,
+            "-vn",
+            "-c:a", "libmp3lame",
+            "-q:a", "2",
+            "-y",
+            outputAudio
+        ];
+        await execFileAsync("ffmpeg", args);
+        console.log("   -> Audio successfully extracted!");
+
+        // Step 3: Transcribe via Groq API
+        console.log("2. Sending audio to Groq Whisper API...");
+        const groq = new Groq({ apiKey: GROQ_API_KEY });
+        
+        const transcription = await groq.audio.transcriptions.create({
+            file: fsSync.createReadStream(outputAudio),
+            model: "whisper-large-v3",
+            language: "id",
+            response_format: "verbose_json"
+        });
+
+        // Step 4: Format the response
+        console.log("3. Formatting transcription...");
+        const segments = (transcription as any).segments || [];
+        const formattedSegments = segments.map((segment: any, index: number) => {
+            return {
+                id: index + 1,
+                startStr: formatTime(segment.start),
+                endStr: formatTime(segment.end),
+                text: segment.text.trim(),
+                rawStart: segment.start
+            };
+        });
+
+        // Clean up temporary files
+        await fs.unlink(inputFilePath).catch(() => {});
+        await fs.unlink(outputAudio).catch(() => {});
+
+        return { success: true, segments: formattedSegments };
+
+    } catch (error: any) {
+        console.error("Extraction error:", error);
+        // Clean up on error
+        await fs.unlink(inputFilePath).catch(() => {});
+        await fs.unlink(outputAudio).catch(() => {});
+        return { success: false, message: "Terjadi kesalahan saat ekstraksi AI: " + error.message };
+    }
+}

@@ -1,10 +1,58 @@
+"use client";
+
 import Link from "next/link";
-import { ArrowLeft, Save, CheckCircle, Mic, RefreshCw, Cpu, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle, Mic, RefreshCw, Cpu, Sparkles, X, PlayCircle, Loader2, Upload } from "lucide-react";
+import { useState, useRef } from "react";
+import { runVideoToText, uploadAndExtract } from "../../../actions/extract";
 
 export default function CandidateProfilePage({ params }: { params: { id: string } }) {
   // Hardcoded for UI demonstration based on the Figma design
   const candidateName = "Budi Santoso";
   const candidateId = "KB-7829A"; // Using ID from the figma design header
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [transcript, setTranscript] = useState<any[]>([]);
+  const [errorMsg, setErrorMsg] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExtractFromDrive = async () => {
+    setIsLoading(true);
+    setErrorMsg("");
+    // Hardcoded Google Drive File ID for demo
+    const fileId = "1RKM-KP1e-Q8WdH0j-7OzrJ0XaJXYVE-x";
+    
+    const result = await runVideoToText(fileId);
+    
+    if (result.success) {
+      setTranscript(result.segments);
+    } else {
+      setErrorMsg(result.message || "Failed to extract");
+    }
+    
+    setIsLoading(false);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsLoading(true);
+    setErrorMsg("");
+    
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const result = await uploadAndExtract(formData);
+    
+    if (result.success) {
+      setTranscript(result.segments);
+    } else {
+      setErrorMsg(result.message || "Failed to extract");
+    }
+
+    setIsLoading(false);
+    if (fileInputRef.current) fileInputRef.current.value = ""; // Reset input
+  };
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#F8FAFC]">
@@ -54,57 +102,114 @@ export default function CandidateProfilePage({ params }: { params: { id: string 
                 </div>
                 <p className="text-[11px] text-gray-500 font-mono">Source: OpenAI Whisper API • Auto-generated</p>
               </div>
-              <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-teal-50 border border-teal-100 rounded-full">
-                <RefreshCw className="w-3 h-3 text-teal-600" />
-                <span className="text-[10px] font-bold text-teal-700 uppercase tracking-wide">Synced</span>
+              <div className="flex items-center space-x-2">
+                {/* Hidden File Input */}
+                <input 
+                  type="file" 
+                  accept="audio/*,video/*" 
+                  ref={fileInputRef} 
+                  onChange={handleFileUpload} 
+                  className="hidden" 
+                />
+                
+                {/* Upload Button */}
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isLoading}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 transition-colors rounded-lg text-xs font-semibold shadow-sm disabled:opacity-50"
+                >
+                  {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  <span>{isLoading ? "Processing..." : "Upload File"}</span>
+                </button>
+
+                {/* Legacy GDrive Button */}
+                <button 
+                  onClick={handleExtractFromDrive}
+                  disabled={isLoading}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-teal-600 text-white hover:bg-teal-700 transition-colors rounded-lg text-xs font-semibold shadow-sm disabled:opacity-50"
+                  title="Extract from GDrive"
+                >
+                  {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlayCircle className="w-3.5 h-3.5" />}
+                  <span>Drive</span>
+                </button>
+                <div className="flex items-center space-x-1.5 px-2.5 py-1.5 bg-teal-50 border border-teal-100 rounded-lg">
+                  <RefreshCw className="w-3.5 h-3.5 text-teal-600" />
+                  <span className="text-[10px] font-bold text-teal-700 uppercase tracking-wide">Synced</span>
+                </div>
               </div>
             </div>
 
             {/* Transcript Scrollable Area */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Dialogue 1 */}
-              <div className="flex items-start">
-                <span className="text-[10px] text-gray-400 font-mono w-14 pt-1 shrink-0">[00:00]</span>
-                <div>
-                  <span className="font-bold text-teal-800 text-sm">Interviewer: </span>
-                  <span className="text-sm text-gray-800 font-medium leading-relaxed">
-                    Selamat pagi, Pak Budi. Terima kasih sudah meluangkan waktu. Bisa ceritakan sedikit tentang keseharian Bapak setelah kecelakaan tahun lalu?
-                  </span>
+              {errorMsg && (
+                <div className="p-3 text-xs text-red-600 bg-red-50 border border-red-100 rounded">
+                  {errorMsg}
                 </div>
-              </div>
-              
-              {/* Dialogue 2 */}
-              <div className="flex items-start">
-                <span className="text-[10px] text-gray-400 font-mono w-14 pt-1 shrink-0">[00:15]</span>
-                <div>
-                  <span className="font-bold text-[#1E3A8A] text-sm">Budi S: </span>
-                  <span className="text-sm text-gray-800 font-medium leading-relaxed">
-                    Pagi, Mas. Ya... semenjak tangan kanan saya diamputasi, aktivitas jadi serba terbatas. Saya dulunya buruh bangunan, sekarang bantu-bantu istri jaga warung kecil di depan rumah. Susah sih awalnya membiasakan diri pakai tangan kiri aja untuk bungkus-bungkus barang.
-                  </span>
-                </div>
-              </div>
+              )}
 
-              {/* Dialogue 3 */}
-              <div className="flex items-start">
-                <span className="text-[10px] text-gray-400 font-mono w-14 pt-1 shrink-0">[01:05]</span>
-                <div>
-                  <span className="font-bold text-teal-800 text-sm">Interviewer: </span>
-                  <span className="text-sm text-gray-800 font-medium leading-relaxed">
-                    Untuk warung itu, apakah cukup untuk memenuhi kebutuhan sehari-hari keluarga, Pak? Mengingat Bapak punya dua anak yang masih sekolah.
-                  </span>
-                </div>
-              </div>
+              {transcript.length > 0 ? (
+                transcript.map((segment) => (
+                  <div key={segment.id} className="flex items-start">
+                    <span className="text-[10px] text-gray-400 font-mono w-14 pt-1 shrink-0">[{segment.startStr.split(',')[0].split(':').slice(1).join(':')}]</span>
+                    <div>
+                      {/* Simulating speaker detection since whisper alone just gives text */}
+                      <span className={`font-bold text-sm ${segment.id % 2 !== 0 ? "text-teal-800" : "text-[#1E3A8A]"}`}>
+                        {segment.id % 2 !== 0 ? "Interviewer: " : "Candidate: "}
+                      </span>
+                      <span className="text-sm text-gray-800 font-medium leading-relaxed">
+                        {segment.text}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <>
+                  {/* Default Dummy Data if not yet extracted */}
+                  {/* Dialogue 1 */}
+                  <div className="flex items-start">
+                    <span className="text-[10px] text-gray-400 font-mono w-14 pt-1 shrink-0">[00:00]</span>
+                    <div>
+                      <span className="font-bold text-teal-800 text-sm">Interviewer: </span>
+                      <span className="text-sm text-gray-800 font-medium leading-relaxed">
+                        Selamat pagi, Pak Budi. Terima kasih sudah meluangkan waktu. Bisa ceritakan sedikit tentang keseharian Bapak setelah kecelakaan tahun lalu?
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Dialogue 2 */}
+                  <div className="flex items-start">
+                    <span className="text-[10px] text-gray-400 font-mono w-14 pt-1 shrink-0">[00:15]</span>
+                    <div>
+                      <span className="font-bold text-[#1E3A8A] text-sm">Budi S: </span>
+                      <span className="text-sm text-gray-800 font-medium leading-relaxed">
+                        Pagi, Mas. Ya... semenjak tangan kanan saya diamputasi, aktivitas jadi serba terbatas. Saya dulunya buruh bangunan, sekarang bantu-bantu istri jaga warung kecil di depan rumah. Susah sih awalnya membiasakan diri pakai tangan kiri aja untuk bungkus-bungkus barang.
+                      </span>
+                    </div>
+                  </div>
 
-              {/* Dialogue 4 */}
-              <div className="flex items-start">
-                <span className="text-[10px] text-gray-400 font-mono w-14 pt-1 shrink-0">[01:18]</span>
-                <div>
-                  <span className="font-bold text-[#1E3A8A] text-sm">Budi S: </span>
-                  <span className="text-sm text-gray-800 font-medium leading-relaxed">
-                    Jujur aja, ngepas banget, Mas. Malah seringnya kurang. Pendapatan warung paling sehari bersih 30-50 ribu. Makanya saya...
-                  </span>
-                </div>
-              </div>
+                  {/* Dialogue 3 */}
+                  <div className="flex items-start">
+                    <span className="text-[10px] text-gray-400 font-mono w-14 pt-1 shrink-0">[01:05]</span>
+                    <div>
+                      <span className="font-bold text-teal-800 text-sm">Interviewer: </span>
+                      <span className="text-sm text-gray-800 font-medium leading-relaxed">
+                        Untuk warung itu, apakah cukup untuk memenuhi kebutuhan sehari-hari keluarga, Pak? Mengingat Bapak punya dua anak yang masih sekolah.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Dialogue 4 */}
+                  <div className="flex items-start">
+                    <span className="text-[10px] text-gray-400 font-mono w-14 pt-1 shrink-0">[01:18]</span>
+                    <div>
+                      <span className="font-bold text-[#1E3A8A] text-sm">Budi S: </span>
+                      <span className="text-sm text-gray-800 font-medium leading-relaxed">
+                        Jujur aja, ngepas banget, Mas. Malah seringnya kurang. Pendapatan warung paling sehari bersih 30-50 ribu. Makanya saya...
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
