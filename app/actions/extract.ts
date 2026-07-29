@@ -158,3 +158,54 @@ export async function uploadAndExtract(formData: FormData) {
         return { success: false, message: "Terjadi kesalahan saat ekstraksi AI: " + error.message };
     }
 }
+
+export async function extractDataFromTranscript(transcriptText: string) {
+    const GROQ_API_KEY = process.env.GROQ_API_KEY;
+
+    if (!GROQ_API_KEY) {
+        return { success: false, message: "GROQ_API_KEY is not set in .env" };
+    }
+
+    try {
+        console.log("Starting data extraction using Groq LLaMA 3...");
+        const groq = new Groq({ apiKey: GROQ_API_KEY });
+        
+        const systemPrompt = `Anda adalah Asisten HRD cerdas. 
+Tugas Anda adalah mengekstrak informasi dari teks transkrip wawancara berikut ke dalam format JSON yang valid.
+Jika informasi tidak disebutkan secara eksplisit di dalam teks, gunakan tanda hubung "-" atau tulis "Tidak disebutkan".
+
+JSON harus memiliki struktur persis seperti ini:
+{
+  "nama": "string (Nama Lengkap)",
+  "umur": "string (Umur dalam angka)",
+  "jenisKelamin": "Laki-laki" | "Perempuan" | "",
+  "ringkasan": "string (Ringkasan aktivitas keseharian)",
+  "ekonomi": "string (Kondisi ekonomi dan finansial saat ini)",
+  "motivasi": "string (Motivasi utama membutuhkan prostetik/tangan bionik)"
+}
+
+Ingat: OUTPUT HARUS HANYA BERUPA JSON OBJECT, TANPA TEKS LAIN.`;
+
+        const chatCompletion = await groq.chat.completions.create({
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: transcriptText }
+            ],
+            model: "llama3-70b-8192",
+            temperature: 0.1,
+            response_format: { type: "json_object" }
+        });
+
+        const jsonResponse = chatCompletion.choices[0]?.message?.content;
+        if (!jsonResponse) {
+            throw new Error("Empty response from AI");
+        }
+
+        const data = JSON.parse(jsonResponse);
+        return { success: true, data };
+
+    } catch (error: any) {
+        console.error("AI Data Extraction error:", error);
+        return { success: false, message: "Gagal mengekstrak data JSON: " + error.message };
+    }
+}
