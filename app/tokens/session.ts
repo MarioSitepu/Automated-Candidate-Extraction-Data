@@ -24,8 +24,10 @@ export async function decrypt(token : string) {
 }
 
 // 2. membuat token baru saat user login
-export async function createSession(userId: number) {
-    const expires = new Date(Date.now() + 60 * 60 * 1000); // token hangus dalam 1 jam
+export async function createSession(userId: number, rememberMe: boolean = false) {
+    // jika rememberMe true, token hangus 30 hari. jika false, 1 jam.
+    const expiresInMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 60 * 60 * 1000;
+    const expires = new Date(Date.now() + expiresInMs); 
 
     // cetak token (jwt)
     const session = await new SignJWT({ userId})

@@ -12,7 +12,7 @@ const registerSchema = z.object({
 });
 
 // menambahkan funsgi zod sebagai validator
-export async function loginUser (emailKetik : string, passwordKetik : string) {
+export async function loginUser (emailKetik : string, passwordKetik : string, rememberMe: boolean = false) {
     
     try {
 
@@ -49,7 +49,7 @@ export async function loginUser (emailKetik : string, passwordKetik : string) {
         }
 
         //4. Jika email password benar
-        await createSession(user.id) // membuat token kalau benar
+        await createSession(user.id, rememberMe) // membuat token kalau benar, dengan opsi rememberMe
         return { success : true, message: "Login Sukses!" }
     } catch {
         return { success : false, message: "Terjadi kesalahan sistem"}
