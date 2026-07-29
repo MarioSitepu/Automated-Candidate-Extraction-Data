@@ -191,7 +191,7 @@ Ingat: OUTPUT HARUS HANYA BERUPA JSON OBJECT, TANPA TEKS LAIN.`;
                 { role: "system", content: systemPrompt },
                 { role: "user", content: transcriptText }
             ],
-            model: "llama3-70b-8192",
+            model: "llama-3.1-70b-versatile",
             temperature: 0.1,
             response_format: { type: "json_object" }
         });
