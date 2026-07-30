@@ -16,7 +16,6 @@ export default function DashboardLayout({
   const handleLogout = async (e: React.FormEvent) => {
     e.preventDefault();
     await logoutUser();
-    router.push("/login");
   };
 
   return (

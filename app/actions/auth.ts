@@ -56,9 +56,12 @@ export async function loginUser (emailKetik : string, passwordKetik : string, re
     }
 }
 
+import { redirect } from "next/navigation";
+
 // menghapus token saat logout
 export async function logoutUser() {
     await deleteSession(); // memanggil fungsi logout
+    redirect("/login");
 }
 
 // fungsi baru untuk daftar akun
