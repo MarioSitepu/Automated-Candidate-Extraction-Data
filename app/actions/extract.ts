@@ -200,6 +200,8 @@ Ingat: OUTPUT HARUS HANYA BERUPA JSON OBJECT, TANPA TEKS LAIN.`;
         if (!jsonResponse) {
             throw new Error("Empty response from AI");
         }
+        
+        console.log("AI Data Extraction Result:", jsonResponse);
 
         const data = JSON.parse(jsonResponse);
         return { success: true, data };
