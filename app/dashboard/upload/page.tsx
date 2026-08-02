@@ -2,11 +2,15 @@
 
 import { useState, useRef } from "react";
 import { Mic, RefreshCw, Cpu, Sparkles, Loader2, CheckCircle, UploadCloud } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { uploadAndExtract, extractDataFromTranscript } from "../../actions/extract";
+import { createCandidate } from "../../actions/candidate";
 
 export default function UploadPage() {
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [transcript, setTranscript] = useState<any[]>([]);
   const [extractedData, setExtractedData] = useState<any>(null);
   const [errorMsg, setErrorMsg] = useState("");
@@ -44,6 +48,32 @@ export default function UploadPage() {
     
     setIsLoading(false);
   };
+
+  const handleSaveCandidate = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    setErrorMsg("");
+
+    const res = await createCandidate({
+      nama: extractedData?.nama || "Kandidat Baru",
+      umur: extractedData?.umur || "-",
+      jenisKelamin: extractedData?.jenisKelamin || "-",
+      ringkasan: extractedData?.ringkasan || "-",
+      ekonomi: extractedData?.ekonomi || "-",
+      motivasi: extractedData?.motivasi || "-",
+      status: "Verified",
+      transcriptSegments: transcript,
+    });
+
+    setIsSaving(false);
+
+    if (res.success && res.candidate) {
+      router.push("/dashboard/candidates");
+    } else {
+      setErrorMsg(res.message || "Gagal menyimpan kandidat ke database.");
+    }
+  };
+
 
   // If no file uploaded or still loading, show the upload UI
   if (!file || isLoading) {
@@ -116,9 +146,13 @@ export default function UploadPage() {
           >
             <span>Upload File Lain</span>
           </button>
-          <button className="flex items-center space-x-2 px-4 py-2 bg-[#0F766E] text-white rounded-lg text-sm font-semibold hover:bg-teal-800 transition-colors shadow-sm">
-            <CheckCircle className="w-4 h-4" />
-            <span>Simpan sebagai Kandidat Baru</span>
+          <button 
+            onClick={handleSaveCandidate}
+            disabled={isSaving}
+            className="flex items-center space-x-2 px-4 py-2 bg-[#0F766E] text-white rounded-lg text-sm font-semibold hover:bg-teal-800 transition-colors shadow-sm disabled:opacity-50"
+          >
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+            <span>{isSaving ? "Menyimpan..." : "Simpan sebagai Kandidat Baru"}</span>
           </button>
         </div>
       </header>

@@ -1,19 +1,16 @@
+import "dotenv/config";
 import { PrismaClient } from '@prisma/client'
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
-
-
-// gajadi buat ini, karena di prisma 7 cukup url database saja ke adapter
-// 1. membuka file dev.db dengan mesin better-sqlite3
-// const sqlite = new Database('./dev.db')
+import { PrismaPg } from '@prisma/adapter-pg'
+import { Pool } from 'pg'
 
 const prismaClientSingleton = () => {
-    //2. membuat mesin menjadi adapter yg dipahami prisma
-    const adapter = new PrismaBetterSqlite3({
-        url: './dev.db'
-    })
-
-    //3. memberikan adapter ke kuris prisma( prisma client )
-    return new PrismaClient({ adapter })
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+        throw new Error("DATABASE_URL is missing in environment variables.");
+    }
+    const pool = new Pool({ connectionString });
+    const adapter = new PrismaPg(pool);
+    return new PrismaClient({ adapter });
 }
 
 declare const globalThis: {
