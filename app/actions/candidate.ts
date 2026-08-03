@@ -36,7 +36,7 @@ export async function createCandidate(data: CandidateInput) {
         ekonomi: data.ekonomi || "-",
         motivasi: data.motivasi || "-",
         hobi: data.hobi || "",
-        status: data.status || "Verified",
+        status: data.status || "Ready",
         transcriptJson: data.transcriptSegments ? JSON.stringify(data.transcriptSegments) : null,
       },
     });

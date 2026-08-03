@@ -26,7 +26,7 @@ model Candidate {
   ekonomi        String?
   motivasi       String?
   hobi           String?
-  status         String   @default("Verified") // "Verified", "Processing", "Ready"
+  status         String   @default("Ready") // "Ready", "Processing", "Verified"
   transcriptJson String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

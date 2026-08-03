@@ -158,7 +158,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         ringkasan: extractedData?.ringkasan || "-",
         ekonomi: extractedData?.ekonomi || "-",
         motivasi: extractedData?.motivasi || "-",
-        status: "Verified",
+        status: "Ready",
         transcriptSegments: segments,
       });
 
