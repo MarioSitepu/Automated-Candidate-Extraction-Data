@@ -144,11 +144,18 @@ export async function uploadAndExtract(formData: FormData) {
             };
         });
 
+        // Save audio to public uploads directory for playback
+        const uploadsDir = path.join(process.cwd(), "public", "uploads");
+        await fs.mkdir(uploadsDir, { recursive: true });
+        const finalAudioPath = path.join(uploadsDir, `audio_${timestamp}.mp3`);
+        await fs.copyFile(outputAudio, finalAudioPath).catch(() => {});
+        const publicAudioUrl = `/uploads/audio_${timestamp}.mp3`;
+
         // Clean up temporary files
         await fs.unlink(inputFilePath).catch(() => {});
         await fs.unlink(outputAudio).catch(() => {});
 
-        return { success: true, segments: formattedSegments };
+        return { success: true, segments: formattedSegments, audioUrl: publicAudioUrl };
 
     } catch (error: any) {
         console.error("Extraction error:", error);

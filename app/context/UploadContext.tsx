@@ -159,6 +159,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         ekonomi: extractedData?.ekonomi || "-",
         motivasi: extractedData?.motivasi || "-",
         status: "Ready",
+        audioUrl: extractRes.audioUrl || null,
         transcriptSegments: segments,
       });
 
