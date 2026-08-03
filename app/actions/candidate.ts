@@ -12,6 +12,7 @@ export interface CandidateInput {
   motivasi?: string;
   hobi?: string;
   status?: string;
+  audioUrl?: string;
   transcriptSegments?: any[];
 }
 
@@ -37,6 +38,7 @@ export async function createCandidate(data: CandidateInput) {
         motivasi: data.motivasi || "-",
         hobi: data.hobi || "",
         status: data.status || "Ready",
+        audioUrl: data.audioUrl || null,
         transcriptJson: data.transcriptSegments ? JSON.stringify(data.transcriptSegments) : null,
       },
     });
@@ -129,6 +131,7 @@ export async function updateCandidate(id: string, data: Partial<CandidateInput>)
     if (data.motivasi !== undefined) updateData.motivasi = data.motivasi;
     if (data.hobi !== undefined) updateData.hobi = data.hobi;
     if (data.status !== undefined) updateData.status = data.status;
+    if (data.audioUrl !== undefined) updateData.audioUrl = data.audioUrl;
     if (data.transcriptSegments !== undefined) {
       updateData.transcriptJson = JSON.stringify(data.transcriptSegments);
     }

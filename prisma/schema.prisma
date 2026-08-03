@@ -27,6 +27,7 @@ model Candidate {
   motivasi       String?
   hobi           String?
   status         String   @default("Ready") // "Ready", "Processing", "Verified"
+  audioUrl       String?
   transcriptJson String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

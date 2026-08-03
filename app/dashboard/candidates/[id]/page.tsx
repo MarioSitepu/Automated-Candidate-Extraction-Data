@@ -1,8 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Save, CheckCircle, Mic, RefreshCw, Cpu, Sparkles, Loader2, Lock } from "lucide-react";
-import { useState, useEffect, use } from "react";
+import { 
+  ArrowLeft, 
+  Save, 
+  CheckCircle, 
+  Mic, 
+  RefreshCw, 
+  Cpu, 
+  Sparkles, 
+  Loader2, 
+  Lock,
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  Clock,
+  Radio
+} from "lucide-react";
+import { useState, useEffect, useRef, use } from "react";
 import { getCandidateById, updateCandidate } from "../../../actions/candidate";
 
 export default function CandidateProfilePage({ params }: { params: Promise<{ id: string }> | { id: string } }) {
@@ -24,7 +40,16 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
   const [ekonomi, setEkonomi] = useState("");
   const [motivasi, setMotivasi] = useState("");
   const [hobi, setHobi] = useState("");
-  const [status, setStatus] = useState("Verified");
+  const [status, setStatus] = useState("Ready");
+
+  // Audio Player & Sync states
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const segmentRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const [activeSegmentIndex, setActiveSegmentIndex] = useState<number | null>(null);
 
   const isLocked = status === "Verified";
 
@@ -42,7 +67,7 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
         setEkonomi(c.ekonomi || "");
         setMotivasi(c.motivasi || "");
         setHobi(c.hobi || "");
-        setStatus(c.status || "Verified");
+        setStatus(c.status || "Ready");
         setTranscript(res.transcriptSegments || []);
       } else {
         setMessage({ text: res.message || "Gagal memuat data kandidat", type: "error" });
@@ -52,6 +77,68 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
 
     fetchDetail();
   }, [candidateIdParam]);
+
+  // Sync Active Segment based on Audio CurrentTime
+  useEffect(() => {
+    if (!transcript || transcript.length === 0) return;
+
+    let activeIdx: number | null = null;
+    for (let i = 0; i < transcript.length; i++) {
+      const seg = transcript[i];
+      const start = seg.rawStart !== undefined ? seg.rawStart : i * 15;
+      const nextSeg = transcript[i + 1];
+      const end = nextSeg ? (nextSeg.rawStart !== undefined ? nextSeg.rawStart : (i + 1) * 15) : start + 30;
+
+      if (currentTime >= start && currentTime < end) {
+        activeIdx = i;
+        break;
+      }
+    }
+
+    if (activeIdx !== activeSegmentIndex) {
+      setActiveSegmentIndex(activeIdx);
+      if (activeIdx !== null && segmentRefs.current[activeIdx]) {
+        segmentRefs.current[activeIdx]?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      }
+    }
+  }, [currentTime, transcript, activeSegmentIndex]);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(() => {});
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const seekTo = (seconds: number) => {
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = seconds;
+    setCurrentTime(seconds);
+    if (!isPlaying) {
+      audioRef.current.play().catch(() => {});
+      setIsPlaying(true);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef.current) {
+      setCurrentTime(audioRef.current.currentTime);
+      setDuration(audioRef.current.duration || 0);
+    }
+  };
+
+  const formatSeconds = (secs: number) => {
+    if (isNaN(secs) || secs < 0) return "00:00";
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
 
   const handleSave = async (lockData: boolean = false) => {
     if (!candidate || isLocked) return;
@@ -108,8 +195,20 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
     );
   }
 
+  // Sample fallback audio URL for interactive player demo
+  const sampleAudioUrl = candidate?.audioUrl || "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+
   return (
     <div className="flex-1 flex flex-col h-full bg-[#F8FAFC]">
+      {/* Hidden HTML5 Audio Element */}
+      <audio
+        ref={audioRef}
+        src={sampleAudioUrl}
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={() => setIsPlaying(false)}
+        onLoadedMetadata={handleTimeUpdate}
+      />
+
       {/* Header */}
       <header className="px-8 py-6 flex items-center justify-between bg-[#F8FAFC]">
         <div className="flex items-center space-x-4">
@@ -174,7 +273,7 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
       {/* Main Content: Two Columns */}
       <div className="flex-1 flex overflow-hidden border-t border-gray-200 bg-[#F8FAFC]">
         
-        {/* Left Column: Interview Transcript */}
+        {/* Left Column: Interview Transcript & Interactive Audio Player */}
         <div className="w-1/2 flex flex-col border-r border-gray-200 overflow-hidden bg-[#F8FAFC] p-6">
           <div className="bg-white rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-gray-100 flex-1 flex flex-col overflow-hidden">
             {/* Header Left Panel */}
@@ -184,36 +283,112 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                   <Mic className="w-5 h-5 text-teal-700" />
                   <h2 className="text-lg font-bold text-gray-900">Interview Transcript</h2>
                 </div>
-                <p className="text-[11px] text-gray-500 font-mono">Source: Groq Whisper API • Auto-generated</p>
+                <p className="text-[11px] text-gray-500 font-mono">Click any text line to seek audio timestamp</p>
               </div>
               <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-teal-50 border border-teal-100 rounded-full">
-                <RefreshCw className="w-3 h-3 text-teal-600" />
-                <span className="text-[10px] font-bold text-teal-700 uppercase tracking-wide">Synced</span>
+                <Radio className={`w-3 h-3 ${isPlaying ? "text-teal-600 animate-pulse" : "text-gray-400"}`} />
+                <span className="text-[10px] font-bold text-teal-700 uppercase tracking-wide">
+                  {isPlaying ? "Live Playing" : "Click-to-Seek"}
+                </span>
               </div>
             </div>
 
-            {/* Transcript Scrollable Area */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {/* Click-to-Seek Audio Player Control Bar */}
+            <div className="bg-teal-900 text-white px-6 py-3.5 flex items-center space-x-4 shadow-inner">
+              <button 
+                onClick={togglePlay}
+                className="w-9 h-9 bg-teal-500 hover:bg-teal-400 text-white rounded-full flex items-center justify-center transition-colors shadow-md shrink-0 cursor-pointer"
+              >
+                {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
+              </button>
+
+              <div className="flex-1 space-y-1">
+                <div className="flex items-center justify-between text-[11px] font-mono text-teal-200">
+                  <span className="flex items-center space-x-1">
+                    <Clock className="w-3 h-3" />
+                    <span>{formatSeconds(currentTime)}</span>
+                  </span>
+                  <span>{formatSeconds(duration || (transcript.length * 15))}</span>
+                </div>
+                <input 
+                  type="range"
+                  min={0}
+                  max={duration || (transcript.length * 15)}
+                  value={currentTime}
+                  onChange={(e) => seekTo(Number(e.target.value))}
+                  className="w-full h-1.5 bg-teal-800 rounded-lg appearance-none cursor-pointer accent-teal-400"
+                />
+              </div>
+
+              <button 
+                onClick={() => {
+                  if (audioRef.current) {
+                    audioRef.current.muted = !isMuted;
+                    setIsMuted(!isMuted);
+                  }
+                }}
+                className="text-teal-300 hover:text-white p-1 rounded transition-colors"
+                title={isMuted ? "Unmute" : "Mute"}
+              >
+                {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              </button>
+            </div>
+
+            {/* Transcript Scrollable Area with Interactive Click-to-Seek */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {transcript.length === 0 ? (
                 <div className="text-center text-gray-400 text-xs py-10">
                   Tidak ada transkrip wawancara yang tersimpan untuk kandidat ini.
                 </div>
               ) : (
-                transcript.map((segment: any, index: number) => (
-                  <div key={segment.id || index} className="flex items-start">
-                    <span className="text-[10px] text-gray-400 font-mono w-14 pt-1 shrink-0">
-                      [{segment.startStr ? segment.startStr.split(',')[0].split(':').slice(1).join(':') : `00:${index * 15}`}]
-                    </span>
-                    <div>
-                      <span className={`font-bold text-sm ${index % 2 === 0 ? "text-teal-800" : "text-[#1E3A8A]"}`}>
-                        {index % 2 === 0 ? "Interviewer: " : `${nama ? nama.split(" ")[0] : "Kandidat"}: `}
-                      </span>
-                      <span className="text-sm text-gray-800 font-medium leading-relaxed">
-                        {segment.text}
-                      </span>
+                transcript.map((segment: any, index: number) => {
+                  const segTime = segment.rawStart !== undefined ? segment.rawStart : index * 15;
+                  const isActive = activeSegmentIndex === index;
+
+                  return (
+                    <div 
+                      key={segment.id || index} 
+                      ref={(el) => { segmentRefs.current[index] = el; }}
+                      onClick={() => seekTo(segTime)}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer group flex items-start space-x-3 ${
+                        isActive 
+                          ? "bg-teal-50 border-teal-300 shadow-sm ring-1 ring-teal-400/50" 
+                          : "bg-white border-transparent hover:bg-gray-50/80 hover:border-gray-200"
+                      }`}
+                    >
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); seekTo(segTime); }}
+                        className={`text-[10px] font-mono font-bold px-2 py-1 rounded shrink-0 transition-colors ${
+                          isActive 
+                            ? "bg-teal-600 text-white" 
+                            : "bg-gray-100 text-gray-500 group-hover:bg-teal-100 group-hover:text-teal-800"
+                        }`}
+                        title="Klik untuk putar audio dari detik ini"
+                      >
+                        [{segment.startStr ? segment.startStr.split(',')[0].split(':').slice(1).join(':') : formatSeconds(segTime)}]
+                      </button>
+
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`font-bold text-xs ${index % 2 === 0 ? "text-teal-800" : "text-[#1E3A8A]"}`}>
+                            {index % 2 === 0 ? "Interviewer: " : `${nama ? nama.split(" ")[0] : "Kandidat"}: `}
+                          </span>
+                          {isActive && (
+                            <span className="text-[9px] font-bold text-teal-700 uppercase tracking-widest bg-teal-100 px-2 py-0.5 rounded-full flex items-center space-x-1">
+                              <span className="w-1.5 h-1.5 bg-teal-600 rounded-full animate-ping"></span>
+                              <span>PLAYING</span>
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-sm leading-relaxed transition-colors ${
+                          isActive ? "text-gray-900 font-medium" : "text-gray-700"
+                        }`}>
+                          {segment.text}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
