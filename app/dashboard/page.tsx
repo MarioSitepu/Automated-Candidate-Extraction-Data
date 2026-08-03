@@ -10,7 +10,12 @@ import {
   CheckSquare, 
   ShieldCheck,
   ArrowRight,
-  Loader2
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Info,
+  Trash2,
+  X
 } from "lucide-react";
 import { 
   BarChart, 
@@ -73,7 +78,15 @@ export default function DashboardPage() {
     });
   };
 
-  const { currentTask } = useUpload();
+  const { currentTask, notifications, unreadCount, markAllAsRead, clearNotifications } = useUpload();
+  const [showNotifPopover, setShowNotifPopover] = useState(false);
+
+  const toggleNotif = () => {
+    if (!showNotifPopover) {
+      markAllAsRead();
+    }
+    setShowNotifPopover(!showNotifPopover);
+  };
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
@@ -89,15 +102,116 @@ export default function DashboardPage() {
               className="pl-9 pr-4 py-2 border border-gray-200 rounded-full text-sm w-64 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
             />
           </div>
-          <div className="relative cursor-pointer group" title={currentTask ? currentTask.progressText : "Notifikasi Sistem"}>
-            <Bell className="w-5 h-5 text-gray-600" />
-            {currentTask && (
-              <span className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ${
-                currentTask.status === "completed" ? "bg-teal-500" :
-                currentTask.status === "error" ? "bg-red-500" : "bg-teal-500 animate-ping"
-              }`}></span>
+
+          {/* Bell Notification Button & Popover */}
+          <div className="relative">
+            <button 
+              onClick={toggleNotif}
+              className="relative cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors focus:outline-none"
+              title="Notifikasi Sistem"
+            >
+              <Bell className="w-5 h-5 text-gray-600" />
+              {unreadCount > 0 ? (
+                <span className="absolute top-1 right-1 w-4 h-4 bg-teal-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {unreadCount}
+                </span>
+              ) : currentTask ? (
+                <span className={`absolute top-1 right-1 w-2.5 h-2.5 rounded-full ${
+                  currentTask.status === "completed" ? "bg-teal-500" :
+                  currentTask.status === "error" ? "bg-red-500" : "bg-teal-500 animate-ping"
+                }`}></span>
+              ) : null}
+            </button>
+
+            {/* Popover Dropdown */}
+            {showNotifPopover && (
+              <div className="absolute right-0 top-12 w-80 sm:w-96 bg-white/95 backdrop-blur-md shadow-2xl rounded-2xl border border-gray-100 p-4 z-50 animate-in fade-in zoom-in-95">
+                <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-3">
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-sm font-bold text-gray-900">Notifikasi & Log Aktivitas</h3>
+                    <span className="bg-teal-50 text-teal-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      {notifications.length}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    {notifications.length > 0 && (
+                      <button 
+                        onClick={clearNotifications}
+                        title="Bersihkan Log"
+                        className="text-gray-400 hover:text-red-600 p-1 rounded hover:bg-gray-100 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => setShowNotifPopover(false)}
+                      className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="max-h-80 overflow-y-auto space-y-3 pr-1">
+                  {currentTask && (
+                    <div className="p-3 bg-teal-50 border border-teal-100 rounded-xl space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-teal-700 uppercase tracking-wide">SEDANG BERJALAN</span>
+                        <Loader2 className="w-3.5 h-3.5 text-teal-600 animate-spin" />
+                      </div>
+                      <p className="text-xs font-semibold text-gray-900 truncate">{currentTask.fileName}</p>
+                      <p className="text-[11px] text-gray-600">{currentTask.progressText}</p>
+                    </div>
+                  )}
+
+                  {notifications.length === 0 && !currentTask ? (
+                    <div className="text-center py-6 text-gray-400 text-xs">
+                      Belum ada notifikasi aktivitas.
+                    </div>
+                  ) : (
+                    notifications.map((item) => (
+                      <div 
+                        key={item.id} 
+                        className={`p-3 rounded-xl border text-left transition-colors ${
+                          item.type === "success" ? "bg-teal-50/50 border-teal-100" :
+                          item.type === "error" ? "bg-red-50/50 border-red-100" : "bg-gray-50/50 border-gray-100"
+                        }`}
+                      >
+                        <div className="flex items-start space-x-2.5">
+                          <div className="pt-0.5 shrink-0">
+                            {item.type === "success" ? (
+                              <CheckCircle2 className="w-4 h-4 text-teal-600" />
+                            ) : item.type === "error" ? (
+                              <AlertCircle className="w-4 h-4 text-red-600" />
+                            ) : (
+                              <Info className="w-4 h-4 text-blue-500" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-0.5">
+                              <h4 className="text-xs font-bold text-gray-900 truncate">{item.title}</h4>
+                              <span className="text-[9px] text-gray-400 shrink-0 ml-1">{item.timestamp}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-600 leading-relaxed">{item.message}</p>
+                            {item.candidateId && (
+                              <Link 
+                                href={`/dashboard/candidates/${item.candidateId}`}
+                                onClick={() => setShowNotifPopover(false)}
+                                className="inline-block mt-1.5 text-[10px] font-bold text-teal-700 hover:underline"
+                              >
+                                Lihat Kandidat ➔
+                              </Link>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             )}
           </div>
+
           <div className="w-8 h-8 rounded-full bg-teal-600 text-white flex items-center justify-center cursor-pointer font-bold text-xs">
             A
           </div>

@@ -1,12 +1,23 @@
 "use client";
 
 import React, { createContext, useContext, useState } from "react";
-import { Loader2, CheckCircle2, AlertCircle, X, ChevronRight, Mic, Cpu, Sparkles } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, X, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { uploadAndExtract, extractDataFromTranscript } from "../actions/extract";
 import { createCandidate } from "../actions/candidate";
 
 export type UploadStatus = "idle" | "transcribing" | "extracting" | "saving" | "completed" | "error";
+
+export interface NotificationItem {
+  id: string;
+  title: string;
+  message: string;
+  timestamp: string;
+  type: "info" | "success" | "error";
+  candidateId?: string;
+  candidateCode?: string;
+  read: boolean;
+}
 
 interface UploadTask {
   fileName: string;
@@ -20,26 +31,85 @@ interface UploadTask {
 
 interface UploadContextType {
   currentTask: UploadTask | null;
+  notifications: NotificationItem[];
+  unreadCount: number;
   startUpload: (file: File) => Promise<void>;
   dismissTask: () => void;
+  markAllAsRead: () => void;
+  clearNotifications: () => void;
+  addNotification: (notif: { title: string; message: string; type: "info" | "success" | "error"; candidateId?: string; candidateCode?: string }) => void;
 }
+
+const defaultNotifications: NotificationItem[] = [
+  {
+    id: "init-1",
+    title: "Database Cloud Terhubung",
+    message: "Aplikasi berhasil terhubung ke Supabase PostgreSQL.",
+    timestamp: "Baru saja",
+    type: "info",
+    read: false,
+  },
+  {
+    id: "init-2",
+    title: "Kandidat Terverifikasi",
+    message: "Kandidat Budi Santoso [KB-2024-001] telah diverifikasi.",
+    timestamp: "10 menit lalu",
+    type: "success",
+    candidateId: "KB-2024-001",
+    read: false,
+  },
+];
 
 const UploadContext = createContext<UploadContextType>({
   currentTask: null,
+  notifications: defaultNotifications,
+  unreadCount: defaultNotifications.length,
   startUpload: async () => {},
   dismissTask: () => {},
+  markAllAsRead: () => {},
+  clearNotifications: () => {},
+  addNotification: () => {},
 });
 
 export const useUpload = () => useContext(UploadContext);
 
 export function UploadProvider({ children }: { children: React.ReactNode }) {
   const [currentTask, setCurrentTask] = useState<UploadTask | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(defaultNotifications);
+
+  const addNotification = (notif: { title: string; message: string; type: "info" | "success" | "error"; candidateId?: string; candidateCode?: string }) => {
+    const newItem: NotificationItem = {
+      id: "notif-" + Date.now(),
+      title: notif.title,
+      message: notif.message,
+      timestamp: "Baru saja",
+      type: notif.type,
+      candidateId: notif.candidateId,
+      candidateCode: notif.candidateCode,
+      read: false,
+    };
+    setNotifications((prev) => [newItem, ...prev]);
+  };
+
+  const markAllAsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  };
+
+  const clearNotifications = () => {
+    setNotifications([]);
+  };
 
   const startUpload = async (file: File) => {
     setCurrentTask({
       fileName: file.name,
       status: "transcribing",
       progressText: "Mentranskripsi audio menggunakan AI Whisper...",
+    });
+
+    addNotification({
+      title: "Transkripsi AI Dimulai",
+      message: `Memproses file ${file.name} dengan Groq Whisper API.`,
+      type: "info",
     });
 
     try {
@@ -106,6 +176,14 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         candidateName,
       });
 
+      addNotification({
+        title: "Transkripsi & Ekstraksi Sukses",
+        message: `Kandidat ${candidateName} (${dbRes.candidate.candidateCode}) tersimpan di Supabase.`,
+        type: "success",
+        candidateId: dbRes.candidate.id,
+        candidateCode: dbRes.candidate.candidateCode,
+      });
+
     } catch (error: any) {
       console.error("Background upload error:", error);
       setCurrentTask({
@@ -114,6 +192,12 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         progressText: "Terjadi kesalahan saat memproses.",
         errorMsg: error.message || "Gagal memproses file.",
       });
+
+      addNotification({
+        title: "Gagal Memproses File",
+        message: error.message || `File ${file.name} gagal diproses.`,
+        type: "error",
+      });
     }
   };
 
@@ -121,8 +205,21 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
     setCurrentTask(null);
   };
 
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
   return (
-    <UploadContext.Provider value={{ currentTask, startUpload, dismissTask }}>
+    <UploadContext.Provider
+      value={{
+        currentTask,
+        notifications,
+        unreadCount,
+        startUpload,
+        dismissTask,
+        markAllAsRead,
+        clearNotifications,
+        addNotification,
+      }}
+    >
       {children}
       <FloatingUploadWidget />
     </UploadContext.Provider>
