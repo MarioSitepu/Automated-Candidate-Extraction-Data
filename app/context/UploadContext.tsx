@@ -1,0 +1,222 @@
+"use client";
+
+import React, { createContext, useContext, useState } from "react";
+import { Loader2, CheckCircle2, AlertCircle, X, ChevronRight, Mic, Cpu, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { uploadAndExtract, extractDataFromTranscript } from "../actions/extract";
+import { createCandidate } from "../actions/candidate";
+
+export type UploadStatus = "idle" | "transcribing" | "extracting" | "saving" | "completed" | "error";
+
+interface UploadTask {
+  fileName: string;
+  status: UploadStatus;
+  progressText: string;
+  errorMsg?: string;
+  candidateId?: string;
+  candidateCode?: string;
+  candidateName?: string;
+}
+
+interface UploadContextType {
+  currentTask: UploadTask | null;
+  startUpload: (file: File) => Promise<void>;
+  dismissTask: () => void;
+}
+
+const UploadContext = createContext<UploadContextType>({
+  currentTask: null,
+  startUpload: async () => {},
+  dismissTask: () => {},
+});
+
+export const useUpload = () => useContext(UploadContext);
+
+export function UploadProvider({ children }: { children: React.ReactNode }) {
+  const [currentTask, setCurrentTask] = useState<UploadTask | null>(null);
+
+  const startUpload = async (file: File) => {
+    setCurrentTask({
+      fileName: file.name,
+      status: "transcribing",
+      progressText: "Mentranskripsi audio menggunakan AI Whisper...",
+    });
+
+    try {
+      // Step 1: Compress & Transcribe via Whisper
+      const formData = new FormData();
+      formData.append("file", file);
+      const extractRes = await uploadAndExtract(formData);
+
+      if (!extractRes.success) {
+        throw new Error(extractRes.message || "Gagal mentranskripsi file audio.");
+      }
+
+      const segments = extractRes.segments || [];
+      const fullText = segments.map((s: any) => s.text).join("\n");
+
+      // Step 2: Extract Data via LLaMA 3
+      setCurrentTask((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: "extracting",
+              progressText: "Mengekstrak data psikososial dengan LLaMA 3...",
+            }
+          : null
+      );
+
+      const aiResult = await extractDataFromTranscript(fullText);
+      const extractedData = aiResult.success ? aiResult.data : {};
+
+      // Step 3: Save to Supabase DB
+      setCurrentTask((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: "saving",
+              progressText: "Menyimpan kandidat baru ke Supabase PostgreSQL...",
+            }
+          : null
+      );
+
+      const candidateName = extractedData?.nama || "Kandidat Baru";
+      const dbRes = await createCandidate({
+        nama: candidateName,
+        umur: extractedData?.umur || "-",
+        jenisKelamin: extractedData?.jenisKelamin || "-",
+        ringkasan: extractedData?.ringkasan || "-",
+        ekonomi: extractedData?.ekonomi || "-",
+        motivasi: extractedData?.motivasi || "-",
+        status: "Verified",
+        transcriptSegments: segments,
+      });
+
+      if (!dbRes.success || !dbRes.candidate) {
+        throw new Error(dbRes.message || "Gagal menyimpan kandidat ke database.");
+      }
+
+      // Step 4: Completed
+      setCurrentTask({
+        fileName: file.name,
+        status: "completed",
+        progressText: "Proses transkripsi & ekstraksi AI selesai!",
+        candidateId: dbRes.candidate.id,
+        candidateCode: dbRes.candidate.candidateCode,
+        candidateName,
+      });
+
+    } catch (error: any) {
+      console.error("Background upload error:", error);
+      setCurrentTask({
+        fileName: file.name,
+        status: "error",
+        progressText: "Terjadi kesalahan saat memproses.",
+        errorMsg: error.message || "Gagal memproses file.",
+      });
+    }
+  };
+
+  const dismissTask = () => {
+    setCurrentTask(null);
+  };
+
+  return (
+    <UploadContext.Provider value={{ currentTask, startUpload, dismissTask }}>
+      {children}
+      <FloatingUploadWidget />
+    </UploadContext.Provider>
+  );
+}
+
+function FloatingUploadWidget() {
+  const { currentTask, dismissTask } = useUpload();
+
+  if (!currentTask) return null;
+
+  const isProcessing =
+    currentTask.status === "transcribing" ||
+    currentTask.status === "extracting" ||
+    currentTask.status === "saving";
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 max-w-md w-full bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-teal-100 p-5 transition-all animate-in slide-in-from-bottom-5">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center space-x-3">
+          <div className={`p-2.5 rounded-xl ${
+            currentTask.status === "completed" ? "bg-teal-50 text-teal-600 border border-teal-100" :
+            currentTask.status === "error" ? "bg-red-50 text-red-600 border border-red-100" :
+            "bg-teal-600 text-white shadow-md shadow-teal-600/20"
+          }`}>
+            {isProcessing ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : currentTask.status === "completed" ? (
+              <CheckCircle2 className="w-5 h-5 text-teal-600" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-red-600" />
+            )}
+          </div>
+
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-teal-700 bg-teal-50 px-2 py-0.5 rounded">
+                {isProcessing ? "AI BACKGROUND TASK" : currentTask.status === "completed" ? "SELESAI" : "ERROR"}
+              </span>
+            </div>
+            <h4 className="text-sm font-bold text-gray-900 truncate max-w-[220px]">
+              {currentTask.fileName}
+            </h4>
+          </div>
+        </div>
+
+        <button 
+          onClick={dismissTask}
+          className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Progress & Details */}
+      <div className="space-y-2">
+        <p className="text-xs text-gray-600 font-medium">
+          {currentTask.progressText}
+        </p>
+
+        {isProcessing && (
+          <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+            <div 
+              className="bg-teal-600 h-1.5 rounded-full animate-pulse transition-all duration-500"
+              style={{
+                width: currentTask.status === "transcribing" ? "35%" :
+                       currentTask.status === "extracting" ? "70%" : "90%"
+              }}
+            ></div>
+          </div>
+        )}
+
+        {currentTask.status === "error" && currentTask.errorMsg && (
+          <p className="text-xs text-red-600 bg-red-50 p-2 rounded-lg border border-red-100">
+            {currentTask.errorMsg}
+          </p>
+        )}
+
+        {currentTask.status === "completed" && (
+          <div className="pt-2 flex items-center justify-between border-t border-gray-100">
+            <div className="text-xs font-semibold text-gray-800">
+              {currentTask.candidateCode} • {currentTask.candidateName}
+            </div>
+            <Link 
+              href={`/dashboard/candidates/${currentTask.candidateId}`}
+              onClick={dismissTask}
+              className="flex items-center space-x-1 text-xs font-bold text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <span>Lihat Kandidat</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -26,6 +26,7 @@ import {
 } from "recharts";
 import Link from "next/link";
 import { getDashboardStats } from "../actions/candidate";
+import { useUpload } from "../context/UploadContext";
 
 export default function DashboardPage() {
   const [stats, setStats] = useState({
@@ -72,6 +73,8 @@ export default function DashboardPage() {
     });
   };
 
+  const { currentTask } = useUpload();
+
   return (
     <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
       {/* Header */}
@@ -86,9 +89,14 @@ export default function DashboardPage() {
               className="pl-9 pr-4 py-2 border border-gray-200 rounded-full text-sm w-64 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
             />
           </div>
-          <div className="relative cursor-pointer">
+          <div className="relative cursor-pointer group" title={currentTask ? currentTask.progressText : "Notifikasi Sistem"}>
             <Bell className="w-5 h-5 text-gray-600" />
-            <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+            {currentTask && (
+              <span className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ${
+                currentTask.status === "completed" ? "bg-teal-500" :
+                currentTask.status === "error" ? "bg-red-500" : "bg-teal-500 animate-ping"
+              }`}></span>
+            )}
           </div>
           <div className="w-8 h-8 rounded-full bg-teal-600 text-white flex items-center justify-center cursor-pointer font-bold text-xs">
             A
