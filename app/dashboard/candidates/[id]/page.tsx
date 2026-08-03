@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Save, CheckCircle, Mic, RefreshCw, Cpu, Sparkles, X, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle, Mic, RefreshCw, Cpu, Sparkles, Loader2, Lock } from "lucide-react";
 import { useState, useEffect, use } from "react";
 import { getCandidateById, updateCandidate } from "../../../actions/candidate";
 
@@ -25,6 +25,8 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
   const [motivasi, setMotivasi] = useState("");
   const [hobi, setHobi] = useState("");
   const [status, setStatus] = useState("Verified");
+
+  const isLocked = status === "Verified";
 
   useEffect(() => {
     async function fetchDetail() {
@@ -52,7 +54,7 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
   }, [candidateIdParam]);
 
   const handleSave = async (lockData: boolean = false) => {
-    if (!candidate) return;
+    if (!candidate || isLocked) return;
     setSaving(true);
     setMessage(null);
 
@@ -123,7 +125,7 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                 ID: {candidate.candidateCode}
               </span>
               <span className={`text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded ${
-                status === 'Verified' ? 'bg-teal-100 text-teal-800' : 'bg-amber-100 text-amber-800'
+                isLocked ? 'bg-teal-100 text-teal-800' : 'bg-amber-100 text-amber-800'
               }`}>
                 {status}
               </span>
@@ -140,22 +142,32 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
               {message.text}
             </span>
           )}
-          <button 
-            onClick={() => handleSave(false)}
-            disabled={saving}
-            className="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-200 text-teal-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            <span>Simpan Perubahan</span>
-          </button>
-          <button 
-            onClick={() => handleSave(true)}
-            disabled={saving}
-            className="flex items-center space-x-2 px-4 py-2 bg-[#0F766E] text-white rounded-lg text-sm font-semibold hover:bg-teal-800 transition-colors shadow-sm disabled:opacity-50"
-          >
-            <CheckCircle className="w-4 h-4" />
-            <span>Setujui & Kunci Data</span>
-          </button>
+
+          {isLocked ? (
+            <div className="flex items-center space-x-2 px-4 py-2 bg-teal-50 border border-teal-200 text-teal-800 rounded-lg text-sm font-semibold shadow-sm">
+              <Lock className="w-4 h-4 text-teal-600" />
+              <span>Data Telah Disetujui & Dikunci</span>
+            </div>
+          ) : (
+            <>
+              <button 
+                onClick={() => handleSave(false)}
+                disabled={saving}
+                className="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-200 text-teal-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>Simpan Perubahan</span>
+              </button>
+              <button 
+                onClick={() => handleSave(true)}
+                disabled={saving}
+                className="flex items-center space-x-2 px-4 py-2 bg-[#0F766E] text-white rounded-lg text-sm font-semibold hover:bg-teal-800 transition-colors shadow-sm disabled:opacity-50"
+              >
+                <CheckCircle className="w-4 h-4" />
+                <span>Setujui & Kunci Data</span>
+              </button>
+            </>
+          )}
         </div>
       </header>
 
@@ -217,7 +229,9 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                   <Cpu className="w-5 h-5 text-teal-700" />
                   <h2 className="text-lg font-bold text-gray-900">AI Extraction Validation</h2>
                 </div>
-                <p className="text-[11px] text-gray-500 font-mono">Review and refine AI-extracted clinical data before locking.</p>
+                <p className="text-[11px] text-gray-500 font-mono">
+                  {isLocked ? "Data ini telah dikunci dan tidak dapat diubah lagi." : "Review and refine AI-extracted clinical data before locking."}
+                </p>
               </div>
               <div className="flex items-center space-x-1.5 px-3 py-1.5 bg-teal-50 rounded-full border border-teal-100">
                 <Sparkles className="w-3.5 h-3.5 text-teal-600" />
@@ -239,8 +253,9 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                     <input 
                       type="text" 
                       value={nama} 
+                      disabled={isLocked}
                       onChange={(e) => setNama(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500" 
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed" 
                     />
                   </div>
                   <div className="col-span-2 space-y-1.5">
@@ -248,16 +263,18 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                     <input 
                       type="text" 
                       value={umur} 
+                      disabled={isLocked}
                       onChange={(e) => setUmur(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500" 
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed" 
                     />
                   </div>
                   <div className="col-span-4 space-y-1.5">
                     <label className="text-xs font-bold text-gray-600">Jenis Kelamin</label>
                     <select 
                       value={jenisKelamin} 
+                      disabled={isLocked}
                       onChange={(e) => setJenisKelamin(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
                     >
                       <option value="">Pilih</option>
                       <option value="Laki-laki">Laki-laki</option>
@@ -280,8 +297,9 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                   <textarea 
                     rows={3} 
                     value={ringkasan}
+                    disabled={isLocked}
                     onChange={(e) => setRingkasan(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 leading-relaxed resize-none"
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 leading-relaxed resize-none disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
                   />
                 </div>
 
@@ -290,9 +308,10 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                   <input 
                     type="text"
                     value={hobi}
+                    disabled={isLocked}
                     onChange={(e) => setHobi(e.target.value)}
                     placeholder="Contoh: Otomotif, Mekanik, Memasak"
-                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
                   />
                 </div>
 
@@ -301,8 +320,9 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                   <textarea 
                     rows={2} 
                     value={ekonomi}
+                    disabled={isLocked}
                     onChange={(e) => setEkonomi(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 leading-relaxed resize-none"
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 leading-relaxed resize-none disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -318,8 +338,9 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                   <textarea 
                     rows={2} 
                     value={motivasi}
+                    disabled={isLocked}
                     onChange={(e) => setMotivasi(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 leading-relaxed resize-none"
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 leading-relaxed resize-none disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
