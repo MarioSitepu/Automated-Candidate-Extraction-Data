@@ -27,20 +27,25 @@ async function generateCandidateCode(): Promise<string> {
 export async function createCandidate(data: CandidateInput) {
   try {
     const candidateCode = await generateCandidateCode();
+    const createData: any = {
+      candidateCode,
+      nama: data.nama || "Tanpa Nama",
+      umur: data.umur || "-",
+      jenisKelamin: data.jenisKelamin || "-",
+      ringkasan: data.ringkasan || "-",
+      ekonomi: data.ekonomi || "-",
+      motivasi: data.motivasi || "-",
+      hobi: data.hobi || "",
+      status: data.status || "Ready",
+      transcriptJson: data.transcriptSegments ? JSON.stringify(data.transcriptSegments) : null,
+    };
+
+    if (data.audioUrl) {
+      createData.audioUrl = data.audioUrl;
+    }
+
     const candidate = await prisma.candidate.create({
-      data: {
-        candidateCode,
-        nama: data.nama || "Tanpa Nama",
-        umur: data.umur || "-",
-        jenisKelamin: data.jenisKelamin || "-",
-        ringkasan: data.ringkasan || "-",
-        ekonomi: data.ekonomi || "-",
-        motivasi: data.motivasi || "-",
-        hobi: data.hobi || "",
-        status: data.status || "Ready",
-        audioUrl: data.audioUrl || null,
-        transcriptJson: data.transcriptSegments ? JSON.stringify(data.transcriptSegments) : null,
-      },
+      data: createData,
     });
 
     try {
