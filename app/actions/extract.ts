@@ -244,68 +244,41 @@ export async function runVideoToText(fileIdOrUrl: string) {
     const tempAudio = path.join(process.cwd(), `tmp_gdrive_${timestamp}.mp3`);
 
     try {
-      // Step 1: Fast Audio-Only Direct Network Stream (Skips 600MB Video Track, completes in 5-15 seconds)
+      // Step 1: Download GDrive video via Native HTTPS Downloader
       const tempVideo = path.join(process.cwd(), `tmp_gdrive_video_${timestamp}.mp4`);
-      let downloaded = false;
+      console.log(`1. Downloading GDrive stream via Native HTTPS: ${cleanFileId}`);
+      
+      const downloaded = await downloadGDriveNative(cleanFileId, tempVideo);
 
-      try {
-        console.log(`1. Extracting audio directly over network stream: ${cleanFileId}`);
-        const streamUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`;
-        const ffmpegArgs = [
-          "-reconnect", "1",
-          "-reconnect_streamed", "1",
-          "-reconnect_delay_max", "5",
-          "-rw_timeout", "15000000",
-          "-headers", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n",
-          "-i", streamUrl,
-          "-vn",
-          "-c:a", "libmp3lame",
-          "-q:a", "2",
-          "-y",
-          tempAudio
-        ];
-        await execFileAsync("ffmpeg", ffmpegArgs);
-        const stat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
-        if (stat.size > 1000) {
-          downloaded = true;
-          console.log(`   -> Fast Audio-Only Stream Extraction finished! (Audio Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
-        }
-      } catch (err: any) {
-        console.log("   -> Direct network stream extraction failed, falling back to full GDrive downloader:", err?.message);
-      }
-
-      // Strategy 2: Fallback to full native HTTPS video file downloader if direct stream failed
-      if (!downloaded) {
-        console.log(`2. Falling back to native GDrive video downloader: ${cleanFileId}`);
-        downloaded = await downloadGDriveNative(cleanFileId, tempVideo);
-
-        if (downloaded) {
-          const stat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
-          console.log(`   -> GDrive video native download finished! (Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
-          
-          // Extract audio locally from tempVideo
-          console.log("   -> Extracting MP3 audio locally via FFmpeg...");
-          const ffmpegArgs = [
-            "-i", tempVideo,
-            "-vn",
-            "-c:a", "libmp3lame",
-            "-q:a", "2",
-            "-y",
-            tempAudio
-          ];
-          await execFileAsync("ffmpeg", ffmpegArgs);
-          await fs.unlink(tempVideo).catch(() => {});
-        }
-      }
-
-      if (!downloaded) {
+      if (!downloaded || !fsSync.existsSync(tempVideo)) {
         throw new Error(
           "Gagal mengunduh file dari Google Drive. Harap pastikan akses file di Google Drive diatur ke 'Siapa saja yang memiliki link' (Anyone with the link can view)."
         );
       }
 
-      // Cleanup local video file immediately
+      const videoStat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
+      console.log(`   -> GDrive video native download finished! (Size: ${(videoStat.size / (1024 * 1024)).toFixed(2)} MB)`);
+
+      // Step 2: Extract audio locally via FFmpeg (Takes only 2-3 seconds for local file)
+      console.log("2. Extracting MP3 audio locally via FFmpeg...");
+      const ffmpegArgs = [
+        "-i", tempVideo,
+        "-vn",
+        "-c:a", "libmp3lame",
+        "-q:a", "2",
+        "-y",
+        tempAudio
+      ];
+      await execFileAsync("ffmpeg", ffmpegArgs);
+      
+      // Cleanup local video file immediately after audio extraction
       await fs.unlink(tempVideo).catch(() => {});
+
+      const audioStat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
+      if (audioStat.size < 1000) {
+        throw new Error("Gagal mengekstrak audio dari file video.");
+      }
+      console.log(`   -> Audio extraction finished! (Audio Size: ${(audioStat.size / (1024 * 1024)).toFixed(2)} MB)`);
 
       // Step 3: Transcribe via Deepgram Nova-3 or Groq Whisper
       const formattedSegments = await transcribeAudioFile(tempAudio);
