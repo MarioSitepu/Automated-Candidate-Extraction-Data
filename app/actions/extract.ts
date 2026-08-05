@@ -4,9 +4,89 @@ import { execFile } from "child_process";
 import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
+import https from "https";
+import http from "http";
 import { DeepgramClient } from "@deepgram/sdk";
 import Groq from "groq-sdk";
 import util from "util";
+
+const execFileAsync = util.promisify(execFile);
+
+// Native HTTPS GDrive file downloader (Fixes Undici fetch UND_ERR_BODY_TIMEOUT & memory limits)
+function downloadGDriveNative(cleanFileId: string, targetVideoPath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const initialUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`;
+
+    function fetchUrl(targetUrl: string, redirectCount = 0) {
+      if (redirectCount > 8) return resolve(false);
+
+      const client = targetUrl.startsWith("https") ? https : http;
+      const req = client.get(targetUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
+      }, (res) => {
+        // Handle HTTP Redirects (301, 302, 303, 307)
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          const redirectUrl = res.headers.location.startsWith("http") 
+            ? res.headers.location 
+            : `https://drive.google.com${res.headers.location}`;
+          return fetchUrl(redirectUrl, redirectCount + 1);
+        }
+
+        if (res.statusCode !== 200) {
+          return resolve(false);
+        }
+
+        const contentType = res.headers["content-type"] || "";
+        if (contentType.includes("text/html")) {
+          let bodyText = "";
+          res.on("data", (chunk) => { bodyText += chunk.toString(); });
+          res.on("end", () => {
+            const confirmMatch = bodyText.match(/confirm=([a-zA-Z0-9_-]+)/) || bodyText.match(/name="confirm" value="([a-zA-Z0-9_-]+)"/);
+            const uuidMatch = bodyText.match(/uuid=([a-zA-Z0-9_-]+)/);
+
+            if (confirmMatch) {
+              const confirmToken = confirmMatch[1];
+              const uuidParam = uuidMatch ? `&uuid=${uuidMatch[1]}` : "";
+              const confirmedUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=${confirmToken}${uuidParam}`;
+              fetchUrl(confirmedUrl, redirectCount + 1);
+            } else {
+              resolve(false);
+            }
+          });
+          return;
+        }
+
+        // Direct binary stream write to disk
+        const fileStream = fsSync.createWriteStream(targetVideoPath);
+        res.pipe(fileStream);
+
+        fileStream.on("finish", () => {
+          fileStream.close(() => resolve(true));
+        });
+
+        fileStream.on("error", () => {
+          fsSync.unlink(targetVideoPath, () => {});
+          resolve(false);
+        });
+      });
+
+      req.on("error", (err) => {
+        console.error("Native HTTPS request error:", err?.message);
+        resolve(false);
+      });
+
+      // 15-minute socket timeout
+      req.setTimeout(900000, () => {
+        req.destroy();
+        resolve(false);
+      });
+    }
+
+    fetchUrl(initialUrl);
+  });
+}
 
 const execFileAsync = util.promisify(execFile);
 
@@ -129,97 +209,15 @@ export async function runVideoToText(fileIdOrUrl: string) {
     const tempAudio = path.join(process.cwd(), `tmp_gdrive_${timestamp}.mp3`);
 
     try {
-      // Step 1: Download GDrive video via Node.js Fast Stream Downloader
+      // Step 1: Download GDrive video via Native HTTPS Downloader (No body timeout limit)
       const tempVideo = path.join(process.cwd(), `tmp_gdrive_video_${timestamp}.mp4`);
-      let downloaded = false;
+      console.log(`1. Fast-downloading GDrive stream via Native HTTPS: ${cleanFileId}`);
+      
+      let downloaded = await downloadGDriveNative(cleanFileId, tempVideo);
 
-      const candidateUrls = [
-        `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`,
-        `https://drive.google.com/uc?export=download&id=${cleanFileId}&confirm=t`,
-        `https://drive.google.com/uc?id=${cleanFileId}&export=download`,
-      ];
-
-      for (const downloadUrl of candidateUrls) {
-        try {
-          console.log(`1. Fast-downloading GDrive stream: ${downloadUrl}`);
-          let streamRes = await fetch(downloadUrl, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            },
-          });
-
-          if (!streamRes.ok || !streamRes.body) continue;
-
-          let contentType = streamRes.headers.get("content-type") || "";
-          if (contentType.includes("text/html")) {
-            console.log("   -> HTML warning page returned by GDrive, parsing confirmation token...");
-            const htmlText = await streamRes.text();
-            const confirmMatch = htmlText.match(/confirm=([a-zA-Z0-9_-]+)/) || htmlText.match(/name="confirm" value="([a-zA-Z0-9_-]+)"/);
-            const uuidMatch = htmlText.match(/uuid=([a-zA-Z0-9_-]+)/);
-
-            const confirmToken = confirmMatch ? confirmMatch[1] : "t";
-            const uuidParam = uuidMatch ? `&uuid=${uuidMatch[1]}` : "";
-            
-            const confirmedUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=${confirmToken}${uuidParam}`;
-            console.log(`   -> Fetching confirmed stream URL: ${confirmedUrl}`);
-            const confirmedRes = await fetch(confirmedUrl, {
-              headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-              },
-            });
-
-            if (confirmedRes.ok && confirmedRes.body && !(confirmedRes.headers.get("content-type") || "").includes("text/html")) {
-              streamRes = confirmedRes;
-            } else {
-              const ucConfirmedUrl = `https://drive.google.com/uc?export=download&id=${cleanFileId}&confirm=${confirmToken}`;
-              const ucRes = await fetch(ucConfirmedUrl, {
-                headers: {
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                },
-              });
-              if (ucRes.ok && ucRes.body && !(ucRes.headers.get("content-type") || "").includes("text/html")) {
-                streamRes = ucRes;
-              } else {
-                console.log("   -> Could not bypass HTML confirmation page for this candidate URL.");
-                continue;
-              }
-            }
-          }
-
-          await new Promise<void>((resolve, reject) => {
-            const fileStream = fsSync.createWriteStream(tempVideo);
-            fileStream.on("finish", resolve);
-            fileStream.on("error", reject);
-
-            const reader = (streamRes.body as any).getReader();
-            function pump() {
-              reader.read().then(({ done, value }: any) => {
-                if (done) {
-                  fileStream.end();
-                  return;
-                }
-                fileStream.write(Buffer.from(value), (err) => {
-                  if (err) {
-                    fileStream.destroy(err);
-                    reject(err);
-                  } else {
-                    pump();
-                  }
-                });
-              }).catch(reject);
-            }
-            pump();
-          });
-
-          const stat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
-          if (stat.size > 1000) {
-            downloaded = true;
-            console.log(`   -> GDrive video fast-download finished! (Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
-            break;
-          }
-        } catch (err: any) {
-          console.error("Download strategy failed:", err?.message);
-        }
+      if (downloaded) {
+        const stat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
+        console.log(`   -> GDrive video native download finished! (Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
       }
 
       // Strategy 2: OAuth API v3 if ACCESS_TOKEN is present
@@ -227,44 +225,7 @@ export async function runVideoToText(fileIdOrUrl: string) {
         try {
           console.log("1b. Trying GDrive API v3 with OAuth ACCESS_TOKEN...");
           const gdriveApiUrl = `https://www.googleapis.com/drive/v3/files/${cleanFileId}?alt=media`;
-          const res = await fetch(gdriveApiUrl, {
-            headers: {
-              Authorization: `Bearer ${ACCESS_TOKEN.trim()}`,
-            },
-          });
-
-          if (res.ok && res.body) {
-            await new Promise<void>((resolve, reject) => {
-              const fileStream = fsSync.createWriteStream(tempVideo);
-              fileStream.on("finish", resolve);
-              fileStream.on("error", reject);
-
-              const reader = (res.body as any).getReader();
-              function pump() {
-                reader.read().then(({ done, value }: any) => {
-                  if (done) {
-                    fileStream.end();
-                    return;
-                  }
-                  fileStream.write(Buffer.from(value), (err) => {
-                    if (err) {
-                      fileStream.destroy(err);
-                      reject(err);
-                    } else {
-                      pump();
-                    }
-                  });
-                }).catch(reject);
-              }
-              pump();
-            });
-
-            const stat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
-            if (stat.size > 1000) {
-              downloaded = true;
-              console.log(`   -> GDrive API v3 download finished! (Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
-            }
-          }
+          downloaded = await downloadGDriveNative(cleanFileId, tempVideo);
         } catch (err: any) {
           console.error("OAuth download failed:", err?.message);
         }
