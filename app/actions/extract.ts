@@ -15,10 +15,26 @@ const execFileAsync = util.promisify(execFile);
 // Native HTTPS GDrive file downloader (Fixes Undici fetch UND_ERR_BODY_TIMEOUT & memory limits)
 function downloadGDriveNative(cleanFileId: string, targetVideoPath: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const initialUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`;
+    const candidateUrls = [
+      `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`,
+      `https://drive.google.com/uc?export=download&id=${cleanFileId}&confirm=t`,
+      `https://drive.google.com/uc?id=${cleanFileId}&export=download`,
+    ];
+
+    let candidateIndex = 0;
+
+    function tryNextCandidate() {
+      if (candidateIndex >= candidateUrls.length) {
+        return resolve(false);
+      }
+      const nextUrl = candidateUrls[candidateIndex++];
+      fetchUrl(nextUrl, 0);
+    }
 
     function fetchUrl(targetUrl: string, redirectCount = 0) {
-      if (redirectCount > 8) return resolve(false);
+      if (redirectCount > 8) {
+        return tryNextCandidate();
+      }
 
       const client = targetUrl.startsWith("https") ? https : http;
       const req = client.get(targetUrl, {
@@ -35,7 +51,7 @@ function downloadGDriveNative(cleanFileId: string, targetVideoPath: string): Pro
         }
 
         if (res.statusCode !== 200) {
-          return resolve(false);
+          return tryNextCandidate();
         }
 
         const contentType = res.headers["content-type"] || "";
@@ -43,6 +59,18 @@ function downloadGDriveNative(cleanFileId: string, targetVideoPath: string): Pro
           let bodyText = "";
           res.on("data", (chunk) => { bodyText += chunk.toString(); });
           res.on("end", () => {
+            // Find download link in HTML warning page
+            const hrefMatch = bodyText.match(/href="([^"]*drive\.usercontent\.google\.com\/download[^"]*)"/) ||
+                              bodyText.match(/action="([^"]*drive\.usercontent\.google\.com\/download[^"]*)"/) ||
+                              bodyText.match(/href="([^"]*uc\?export=download[^"]*)"/);
+
+            if (hrefMatch && hrefMatch[1]) {
+              const fullUrl = hrefMatch[1].replace(/&amp;/g, "&");
+              const resolvedUrl = fullUrl.startsWith("http") ? fullUrl : `https://drive.google.com${fullUrl}`;
+              console.log(`   -> Resolved direct HTML download link: ${resolvedUrl}`);
+              return fetchUrl(resolvedUrl, redirectCount + 1);
+            }
+
             const confirmMatch = bodyText.match(/confirm=([a-zA-Z0-9_-]+)/) || bodyText.match(/name="confirm" value="([a-zA-Z0-9_-]+)"/);
             const uuidMatch = bodyText.match(/uuid=([a-zA-Z0-9_-]+)/);
 
@@ -50,10 +78,10 @@ function downloadGDriveNative(cleanFileId: string, targetVideoPath: string): Pro
               const confirmToken = confirmMatch[1];
               const uuidParam = uuidMatch ? `&uuid=${uuidMatch[1]}` : "";
               const confirmedUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=${confirmToken}${uuidParam}`;
-              fetchUrl(confirmedUrl, redirectCount + 1);
-            } else {
-              resolve(false);
+              return fetchUrl(confirmedUrl, redirectCount + 1);
             }
+
+            tryNextCandidate();
           });
           return;
         }
@@ -63,28 +91,37 @@ function downloadGDriveNative(cleanFileId: string, targetVideoPath: string): Pro
         res.pipe(fileStream);
 
         fileStream.on("finish", () => {
-          fileStream.close(() => resolve(true));
+          fileStream.close(() => {
+            // Verify downloaded file size
+            const stat = fsSync.statSync(targetVideoPath);
+            if (stat.size > 1000) {
+              resolve(true);
+            } else {
+              fsSync.unlink(targetVideoPath, () => {});
+              tryNextCandidate();
+            }
+          });
         });
 
         fileStream.on("error", () => {
           fsSync.unlink(targetVideoPath, () => {});
-          resolve(false);
+          tryNextCandidate();
         });
       });
 
       req.on("error", (err) => {
         console.error("Native HTTPS request error:", err?.message);
-        resolve(false);
+        tryNextCandidate();
       });
 
       // 15-minute socket timeout
       req.setTimeout(900000, () => {
         req.destroy();
-        resolve(false);
+        tryNextCandidate();
       });
     }
 
-    fetchUrl(initialUrl);
+    tryNextCandidate();
   });
 }
 
@@ -266,19 +303,6 @@ export async function runVideoToText(fileIdOrUrl: string) {
           "Gagal mengunduh file dari Google Drive. Harap pastikan akses file di Google Drive diatur ke 'Siapa saja yang memiliki link' (Anyone with the link can view)."
         );
       }
-
-      // Step 2: Extract audio locally via FFmpeg
-      console.log("2. Extracting MP3 audio locally via FFmpeg...");
-      const ffmpegArgs = [
-        "-i", tempVideo,
-        "-vn",
-        "-c:a", "libmp3lame",
-        "-q:a", "2",
-        "-y",
-        tempAudio
-      ];
-      await execFileAsync("ffmpeg", ffmpegArgs);
-      console.log("   -> Audio extraction finished!");
 
       // Cleanup local video file immediately
       await fs.unlink(tempVideo).catch(() => {});
