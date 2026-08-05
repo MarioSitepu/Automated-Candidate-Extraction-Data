@@ -104,7 +104,7 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
       setLoading(true);
       const res = await getCandidateById(candidateIdParam);
       if (res.success && res.candidate) {
-        const c = res.candidate;
+        const c: any = res.candidate;
         setCandidate(c);
         setNama(c.nama || "");
         setUmur(c.umur || "");
