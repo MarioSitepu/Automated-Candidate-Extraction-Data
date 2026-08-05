@@ -132,25 +132,17 @@ export async function runVideoToText(fileIdOrUrl: string) {
     // Step 2: Transcribe via Deepgram API (Nova-3)
     console.log("2. Sending GDrive audio to Deepgram API (Nova-3)...");
     const deepgram = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY });
-    const audioBuffer = await fs.readFile(tempAudio);
-
-    const { result, error } = await (deepgram as any).listen.prerecorded.transcribeFile(
-      audioBuffer,
+    const response = await deepgram.listen.v1.media.transcribeFile(
+      fsSync.createReadStream(tempAudio),
       {
         model: "nova-3",
         language: "id",
         smart_format: true,
-        utterances: true, // Untuk mendapatkan segmentasi percakapan berdasarkan jeda
+        utterances: true,
       }
     );
 
-    if (error) {
-      throw new Error(`Deepgram STT Error: ${error.message}`);
-    }
-
-    // Step 3: Format the response
-    console.log("3. Formatting transcription...");
-    const utterances = result.results?.utterances || [];
+    const utterances = (response as any)?.results?.utterances || [];
     
     // Menggunakan utterances atau kata alternatif jika utterances kosong
     const formattedSegments = utterances.length > 0
@@ -234,25 +226,17 @@ export async function uploadAndExtract(formData: FormData) {
     // Step 3: Transcribe via Deepgram API (Nova-3)
     console.log("2. Sending audio to Deepgram API (Nova-3)...");
     const deepgram = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY });
-    const audioBuffer = await fs.readFile(outputAudio);
-
-    const { result, error } = await (deepgram as any).listen.prerecorded.transcribeFile(
-      audioBuffer,
+    const response = await deepgram.listen.v1.media.transcribeFile(
+      fsSync.createReadStream(outputAudio),
       {
         model: "nova-3",
         language: "id",
         smart_format: true,
-        utterances: true
+        utterances: true,
       }
     );
 
-    if (error) {
-      throw new Error(`Deepgram STT Error: ${error.message}`);
-    }
-
-    // Step 4: Format the response
-    console.log("3. Formatting transcription...");
-    const utterances = result.results?.utterances || [];
+    const utterances = (response as any)?.results?.utterances || [];
 
     const formattedSegments = utterances.length > 0
       ? utterances.map((u: any, index: number) => ({

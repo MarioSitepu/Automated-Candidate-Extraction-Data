@@ -55,10 +55,9 @@ async function transcribeAudioFile(audioPath: string) {
     if (DEEPGRAM_API_KEY && DEEPGRAM_API_KEY.trim().length > 0) {
         console.log("Transcribing audio via Deepgram API (Nova-3)...");
         const deepgram = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY.trim() });
-        const audioBuffer = await fs.readFile(audioPath);
 
-        const { result, error } = await (deepgram as any).listen.prerecorded.transcribeFile(
-            audioBuffer,
+        const response = await deepgram.listen.v1.media.transcribeFile(
+            fsSync.createReadStream(audioPath),
             {
                 model: "nova-3",
                 language: "id",
@@ -67,11 +66,7 @@ async function transcribeAudioFile(audioPath: string) {
             }
         );
 
-        if (error) {
-            throw new Error(`Deepgram STT Error: ${error.message}`);
-        }
-
-        const utterances = result?.results?.utterances || [];
+        const utterances = (response as any)?.results?.utterances || [];
         const formattedSegments = utterances.length > 0
             ? utterances.map((u: any, index: number) => ({
                 id: index + 1,
@@ -80,7 +75,7 @@ async function transcribeAudioFile(audioPath: string) {
                 text: u.transcript.trim(),
                 rawStart: u.start
             }))
-            : (result?.results?.channels[0]?.alternatives[0]?.paragraphs?.paragraphs || []).flatMap((p: any) =>
+            : ((response as any)?.results?.channels[0]?.alternatives[0]?.paragraphs?.paragraphs || []).flatMap((p: any) =>
                 p.sentences.map((s: any, index: number) => ({
                     id: index + 1,
                     startStr: formatTime(s.start),
