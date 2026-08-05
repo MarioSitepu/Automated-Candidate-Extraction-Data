@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState } from "react";
 import { Loader2, CheckCircle2, AlertCircle, X, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { uploadAndExtract, extractDataFromTranscript } from "../actions/extract";
+import { uploadAndExtract, extractDataFromTranscript, runVideoToText } from "../actions/extract";
 import { createCandidate } from "../actions/candidate";
 
 export type UploadStatus = "idle" | "transcribing" | "extracting" | "saving" | "completed" | "error";
@@ -34,6 +34,7 @@ interface UploadContextType {
   notifications: NotificationItem[];
   unreadCount: number;
   startUpload: (file: File) => Promise<void>;
+  startGDriveUpload: (fileIdOrUrl: string) => Promise<void>;
   dismissTask: () => void;
   markAllAsRead: () => void;
   clearNotifications: () => void;
@@ -202,6 +203,103 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const startGDriveUpload = async (fileIdOrUrl: string) => {
+    setCurrentTask({
+      fileName: `Google Drive (${fileIdOrUrl.slice(0, 18)}...)`,
+      status: "transcribing",
+      progressText: "Mengunduh & mentranskripsi video dari Google Drive...",
+    });
+
+    addNotification({
+      title: "Ekstraksi Google Drive Dimulai",
+      message: "Mengambil file dari Google Drive dan memproses dengan Whisper AI.",
+      type: "info",
+    });
+
+    try {
+      const extractRes = await runVideoToText(fileIdOrUrl);
+
+      if (!extractRes.success) {
+        throw new Error(extractRes.message || "Gagal memproses file Google Drive.");
+      }
+
+      const segments = extractRes.segments || [];
+      const fullText = segments.map((s: any) => s.text).join("\n");
+
+      setCurrentTask((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: "extracting",
+              progressText: "Mengekstrak data psikososial dengan LLaMA 3...",
+            }
+          : null
+      );
+
+      const aiResult = await extractDataFromTranscript(fullText);
+      const extractedData = aiResult.success ? aiResult.data : {};
+
+      setCurrentTask((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: "saving",
+              progressText: "Menyimpan kandidat baru ke Supabase PostgreSQL...",
+            }
+          : null
+      );
+
+      const candidateName = extractedData?.nama || "Kandidat GDrive";
+      const dbRes = await createCandidate({
+        nama: candidateName,
+        umur: extractedData?.umur || "-",
+        jenisKelamin: extractedData?.jenisKelamin || "-",
+        ringkasan: extractedData?.ringkasan || "-",
+        ekonomi: extractedData?.ekonomi || "-",
+        motivasi: extractedData?.motivasi || "-",
+        status: "Ready",
+        audioUrl: extractRes.audioUrl || undefined,
+        transcriptSegments: segments,
+      });
+
+      if (!dbRes.success || !dbRes.candidate) {
+        throw new Error(dbRes.message || "Gagal menyimpan kandidat ke database.");
+      }
+
+      setCurrentTask({
+        fileName: `GDrive: ${candidateName}`,
+        status: "completed",
+        progressText: "Proses ekstraksi Google Drive selesai!",
+        candidateId: dbRes.candidate.id,
+        candidateCode: dbRes.candidate.candidateCode,
+        candidateName,
+      });
+
+      addNotification({
+        title: "Ekstraksi GDrive Sukses",
+        message: `Kandidat ${candidateName} (${dbRes.candidate.candidateCode}) tersimpan di Supabase.`,
+        type: "success",
+        candidateId: dbRes.candidate.id,
+        candidateCode: dbRes.candidate.candidateCode,
+      });
+
+    } catch (error: any) {
+      console.error("GDrive upload error:", error);
+      setCurrentTask({
+        fileName: "Google Drive Video",
+        status: "error",
+        progressText: "Terjadi kesalahan saat memproses Google Drive.",
+        errorMsg: error.message || "Gagal memproses link Google Drive.",
+      });
+
+      addNotification({
+        title: "Gagal Memproses Google Drive",
+        message: error.message || "File Google Drive gagal diproses.",
+        type: "error",
+      });
+    }
+  };
+
   const dismissTask = () => {
     setCurrentTask(null);
   };
@@ -215,6 +313,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         notifications,
         unreadCount,
         startUpload,
+        startGDriveUpload,
         dismissTask,
         markAllAsRead,
         clearNotifications,

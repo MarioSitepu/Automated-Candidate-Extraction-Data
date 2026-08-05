@@ -19,40 +19,67 @@ function formatTime(seconds: number) {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${millis.toString().padStart(3, '0')}`;
 }
 
-export async function runVideoToText(fileId: string) {
-    const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
-    const GROQ_API_KEY = process.env.GROQ_API_KEY;
+export function extractGDriveFileId(input: string): string {
+    if (!input) return "";
+    const match = input.match(/\/d\/([a-zA-Z0-9_-]+)/) || input.match(/id=([a-zA-Z0-9_-]+)/);
+    return match ? match[1] : input.trim();
+}
 
-    if (!ACCESS_TOKEN || !GROQ_API_KEY) {
-        return { success: false, message: "ACCESS_TOKEN or GROQ_API_KEY is not set in .env" };
+export async function runVideoToText(fileIdOrUrl: string) {
+    const GROQ_API_KEY = process.env.GROQ_API_KEY;
+    const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+
+    if (!GROQ_API_KEY) {
+        return { success: false, message: "GROQ_API_KEY is not set in .env" };
     }
 
-    // Paths
-    const outputAudio = path.join(process.cwd(), `audio_${fileId}.mp3`);
-    const gdriveUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
-    const authHeader = `Authorization: Bearer ${ACCESS_TOKEN.trim()}\r\n`;
+    const cleanFileId = extractGDriveFileId(fileIdOrUrl);
+    if (!cleanFileId) {
+        return { success: false, message: "Link atau File ID Google Drive tidak valid." };
+    }
 
-    try {
-        // Step 1: Download and compress audio via FFmpeg
-        console.log("1. Downloading and compressing audio via FFmpeg...");
-        const args = [
+    const timestamp = Date.now();
+    const tempAudio = path.join(process.cwd(), `tmp_gdrive_${timestamp}.mp3`);
+    
+    // Choose URL & Headers based on ACCESS_TOKEN availability
+    let gdriveUrl = `https://drive.google.com/uc?export=download&id=${cleanFileId}`;
+    let args: string[] = [];
+
+    if (ACCESS_TOKEN && ACCESS_TOKEN.trim().length > 0) {
+        gdriveUrl = `https://www.googleapis.com/drive/v3/files/${cleanFileId}?alt=media`;
+        const authHeader = `Authorization: Bearer ${ACCESS_TOKEN.trim()}\r\n`;
+        args = [
             "-headers", authHeader,
             "-i", gdriveUrl,
             "-vn",
             "-c:a", "libmp3lame",
             "-q:a", "2",
             "-y",
-            outputAudio
+            tempAudio
         ];
+    } else {
+        args = [
+            "-i", gdriveUrl,
+            "-vn",
+            "-c:a", "libmp3lame",
+            "-q:a", "2",
+            "-y",
+            tempAudio
+        ];
+    }
+
+    try {
+        // Step 1: Download and compress audio via FFmpeg
+        console.log(`1. Downloading and compressing GDrive video (${cleanFileId}) via FFmpeg...`);
         await execFileAsync("ffmpeg", args);
-        console.log("   -> Audio successfully extracted!");
+        console.log("   -> GDrive audio successfully extracted!");
 
         // Step 2: Transcribe via Groq API
-        console.log("2. Sending audio to Groq Whisper API...");
+        console.log("2. Sending GDrive audio to Groq Whisper API...");
         const groq = new Groq({ apiKey: GROQ_API_KEY });
         
         const transcription = await groq.audio.transcriptions.create({
-            file: fsSync.createReadStream(outputAudio),
+            file: fsSync.createReadStream(tempAudio),
             model: "whisper-large-v3",
             language: "id",
             response_format: "verbose_json"
@@ -71,16 +98,27 @@ export async function runVideoToText(fileId: string) {
             };
         });
 
-        // Clean up the mp3 file
-        await fs.unlink(outputAudio).catch(() => {});
+        // Save audio to public uploads directory for playback
+        const uploadsDir = path.join(process.cwd(), "public", "uploads");
+        await fs.mkdir(uploadsDir, { recursive: true });
+        const finalAudioPath = path.join(uploadsDir, `audio_gdrive_${cleanFileId}_${timestamp}.mp3`);
+        await fs.copyFile(tempAudio, finalAudioPath).catch(() => {});
+        const publicAudioUrl = `/uploads/audio_gdrive_${cleanFileId}_${timestamp}.mp3`;
 
-        return { success: true, segments: formattedSegments };
+        // Clean up temporary files
+        await fs.unlink(tempAudio).catch(() => {});
+
+        return { 
+            success: true, 
+            segments: formattedSegments, 
+            audioUrl: publicAudioUrl,
+            fileId: cleanFileId 
+        };
 
     } catch (error: any) {
-        console.error("Extraction error:", error);
-        // Clean up on error
-        await fs.unlink(outputAudio).catch(() => {});
-        return { success: false, message: "Terjadi kesalahan saat ekstraksi AI: " + error.message };
+        console.error("GDrive extraction error:", error);
+        await fs.unlink(tempAudio).catch(() => {});
+        return { success: false, message: "Terjadi kesalahan saat ekstraksi Google Drive: " + error.message };
     }
 }
 
