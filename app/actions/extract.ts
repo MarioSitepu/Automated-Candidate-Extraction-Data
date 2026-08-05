@@ -1,6 +1,6 @@
 "use server";
 
-import { execFile } from "child_process";
+import { spawn } from "child_process";
 import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
@@ -10,7 +10,32 @@ import { DeepgramClient } from "@deepgram/sdk";
 import Groq from "groq-sdk";
 import util from "util";
 
-const execFileAsync = util.promisify(execFile);
+// Non-blocking FFmpeg process execution (Fixes Windows OS pipe buffer deadlocks)
+function runFFmpeg(args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const ff = spawn("ffmpeg", args);
+    let stderrText = "";
+
+    ff.stderr.on("data", (chunk) => {
+      stderrText += chunk.toString();
+      if (stderrText.length > 50000) {
+        stderrText = stderrText.slice(-20000);
+      }
+    });
+
+    ff.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`FFmpeg error (code ${code}): ${stderrText.slice(-300)}`));
+      }
+    });
+
+    ff.on("error", (err) => {
+      reject(err);
+    });
+  });
+}
 
 // Resolves true GDrive media CDN stream URL by parsing redirects and confirmation tokens in 0.2s
 function resolveDirectStreamUrl(cleanFileId: string): Promise<string> {
@@ -328,7 +353,7 @@ export async function runVideoToText(fileIdOrUrl: string) {
           "-y",
           tempAudio
         ];
-        await execFileAsync("ffmpeg", ffmpegArgs);
+        await runFFmpeg(ffmpegArgs);
         const stat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
         if (stat.size > 1000) {
           downloaded = true;
@@ -361,7 +386,7 @@ export async function runVideoToText(fileIdOrUrl: string) {
           "-y",
           tempAudio
         ];
-        await execFileAsync("ffmpeg", ffmpegArgs);
+        await runFFmpeg(ffmpegArgs);
         await fs.unlink(tempVideo).catch(() => {});
       }
 
@@ -431,7 +456,7 @@ export async function uploadAndExtract(formData: FormData) {
             "-y",
             outputAudio
         ];
-        await execFileAsync("ffmpeg", args);
+        await runFFmpeg(args);
         console.log("   -> Audio successfully extracted!");
 
         // Step 3: Transcribe via Deepgram Nova-3 or Groq Whisper
