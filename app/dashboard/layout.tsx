@@ -35,7 +35,7 @@ function SidebarStorageWidget() {
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <Database className="w-4 h-4 text-teal-700" />
-          <span className="text-xs font-bold text-gray-800">Supabase Storage</span>
+          <span className="text-xs font-bold text-gray-800">Ruang Penyimpanan</span>
         </div>
         <button 
           onClick={loadStorage} 
@@ -63,7 +63,7 @@ function SidebarStorageWidget() {
         </div>
 
         <p className="text-[10px] text-gray-400 text-right">
-          Capacity: 500 MB Free Tier
+          500 MB Capacity
         </p>
       </div>
     </div>
