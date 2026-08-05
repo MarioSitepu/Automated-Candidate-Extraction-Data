@@ -285,38 +285,32 @@ JSON harus memiliki struktur persis seperti ini:
     "kondisiLengan": "string (Bawah siku, atas siku, tanpa jari, dsb)",
     "perubahanKesulitan": "string (Kegiatan yang berubah & paling susah dilakukan sekarang)",
     "pengalamanProstetik": "string (Pernah pakai tangan prostetik sebelumnya & rasanya)",
-    "bantuanSehariHari": "string (Siapa yang membantu kegiatan sehari-hari)",
-    "skorA": 0
+    "bantuanSehariHari": "string (Siapa yang membantu kegiatan sehari-hari)"
   },
   "seksiB": {
     "alasanRagaArm": "string (Kenapa ingin pakai Raga Arm)",
     "harapanUtama": "string (Hal yang paling ingin dilakukan jika punya Raga Arm)",
     "komitmenHarian": "string (Apakah sanggup memakai setiap hari)",
-    "kesiapanAdaptasi": "string (Skala 1-10 kesiapan belajar & adaptasi)",
-    "skorB": 0
+    "kesiapanAdaptasi": "string (Skala 1-10 kesiapan belajar & adaptasi)"
   },
   "seksiC": {
     "rencanaMasaDepan": "string (Rencana 6-12 bulan ke depan: kerja/usaha/skill)",
-    "peranRagaArm": "string (Bagaimana Raga Arm membantu target masa depan)",
-    "skorC": 0
+    "peranRagaArm": "string (Bagaimana Raga Arm membantu target masa depan)"
   },
   "seksiD": {
     "sumberPenghasilan": "string (Sumber & jumlah penghasilan per bulan)",
-    "tanggunganKeluarga": "string (Status menikah, anak, atau orang tua yang ditanggung)",
-    "skorD": 0
+    "tanggunganKeluarga": "string (Status menikah, anak, atau orang tua yang ditanggung)"
   },
   "seksiE": {
     "kesiapanKeBandung": "string (Bersedia ke Bandung & pengetahuan transportasi/luar kota)",
     "laporanPublikasi": "string (Bersedia kirim kabar per 2 minggu, video call bulanan, foto/video acara)",
-    "minatPelatihan": "string (Keinginan ikut pelatihan kerja / usaha)",
-    "skorE": 0
+    "minatPelatihan": "string (Keinginan ikut pelatihan kerja / usaha)"
   },
   "seksiF": {
     "tantanganBangkit": "string (Tantangan terberat disabilitas & cara bangkit dari down)",
     "hubunganKeluarga": "string (Sikap dan hubungan dengan keluarga saat ini)",
     "hubunganTeman": "string (Hubungan dengan teman dekat/pasangan)",
-    "kegiatanSosial": "string (Kegiatan rutin kumpul/komunitas)",
-    "skorF": 0
+    "kegiatanSosial": "string (Kegiatan rutin kumpul/komunitas)"
   }
 }
 
