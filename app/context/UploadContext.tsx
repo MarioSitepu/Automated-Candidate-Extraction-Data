@@ -66,6 +66,7 @@ const UploadContext = createContext<UploadContextType>({
   notifications: defaultNotifications,
   unreadCount: defaultNotifications.length,
   startUpload: async () => {},
+  startGDriveUpload: async () => {},
   dismissTask: () => {},
   markAllAsRead: () => {},
   clearNotifications: () => {},
