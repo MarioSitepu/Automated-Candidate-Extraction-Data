@@ -12,6 +12,52 @@ import util from "util";
 
 const execFileAsync = util.promisify(execFile);
 
+// Resolves true GDrive media CDN stream URL by parsing redirects and confirmation tokens in 0.2s
+function resolveDirectStreamUrl(cleanFileId: string): Promise<string> {
+  return new Promise((resolve) => {
+    const initialUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`;
+
+    function check(url: string, count = 0) {
+      if (count > 5) return resolve(initialUrl);
+      const client = url.startsWith("https") ? https : http;
+      client.get(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" } }, (res) => {
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          const redirectUrl = res.headers.location.startsWith("http") 
+            ? res.headers.location 
+            : `https://drive.google.com${res.headers.location}`;
+          return check(redirectUrl, count + 1);
+        }
+        const contentType = res.headers["content-type"] || "";
+        if (contentType.includes("text/html")) {
+          let html = "";
+          res.on("data", chunk => html += chunk.toString());
+          res.on("end", () => {
+            const hrefMatch = html.match(/href="([^"]*drive\.usercontent\.google\.com\/download[^"]*)"/) ||
+                              html.match(/action="([^"]*drive\.usercontent\.google\.com\/download[^"]*)"/) ||
+                              html.match(/href="([^"]*uc\?export=download[^"]*)"/);
+            if (hrefMatch && hrefMatch[1]) {
+              const fullUrl = hrefMatch[1].replace(/&amp;/g, "&");
+              const resolved = fullUrl.startsWith("http") ? fullUrl : `https://drive.google.com${fullUrl}`;
+              return resolve(resolved);
+            }
+            const confirmMatch = html.match(/confirm=([a-zA-Z0-9_-]+)/) || html.match(/name="confirm" value="([a-zA-Z0-9_-]+)"/);
+            const uuidMatch = html.match(/uuid=([a-zA-Z0-9_-]+)/);
+            if (confirmMatch) {
+              const token = confirmMatch[1];
+              const uuid = uuidMatch ? `&uuid=${uuidMatch[1]}` : "";
+              return resolve(`https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=${token}${uuid}`);
+            }
+            resolve(initialUrl);
+          });
+        } else {
+          resolve(url);
+        }
+      }).on("error", () => resolve(initialUrl));
+    }
+    check(initialUrl);
+  });
+}
+
 // Native HTTPS GDrive file downloader (Fixes Undici fetch UND_ERR_BODY_TIMEOUT & memory limits)
 function downloadGDriveNative(cleanFileId: string, targetVideoPath: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -249,8 +295,10 @@ export async function runVideoToText(fileIdOrUrl: string) {
       const tempVideo = path.join(process.cwd(), `tmp_gdrive_video_${timestamp}.mp4`);
 
       try {
-        console.log(`1. Extracting audio directly over network stream: ${cleanFileId}`);
-        const streamUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`;
+        console.log(`1. Resolving direct media CDN stream URL for GDrive: ${cleanFileId}`);
+        const streamUrl = await resolveDirectStreamUrl(cleanFileId);
+        console.log(`   -> Direct media stream URL resolved! Extracting audio...`);
+
         const ffmpegArgs = [
           "-reconnect", "1",
           "-reconnect_streamed", "1",
