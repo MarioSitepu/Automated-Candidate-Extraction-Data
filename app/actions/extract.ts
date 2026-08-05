@@ -4,6 +4,7 @@ import { execFile } from "child_process";
 import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
+import { createClient } from "@deepgram/sdk";
 import Groq from "groq-sdk";
 import util from "util";
 
@@ -46,13 +47,77 @@ export async function extractGDriveFileId(input: string): Promise<string> {
     return "";
 }
 
-export async function runVideoToText(fileIdOrUrl: string) {
+// Helper to transcribe audio using Deepgram Nova-3 or Groq Whisper fallback
+async function transcribeAudioFile(audioPath: string) {
+    const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
     const GROQ_API_KEY = process.env.GROQ_API_KEY;
-    const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+
+    if (DEEPGRAM_API_KEY && DEEPGRAM_API_KEY.trim().length > 0) {
+        console.log("Transcribing audio via Deepgram API (Nova-3)...");
+        const deepgram = createClient(DEEPGRAM_API_KEY.trim());
+        const audioBuffer = await fs.readFile(audioPath);
+
+        const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
+            audioBuffer,
+            {
+                model: "nova-3",
+                language: "id",
+                smart_format: true,
+                utterances: true,
+            }
+        );
+
+        if (error) {
+            throw new Error(`Deepgram STT Error: ${error.message}`);
+        }
+
+        const utterances = result?.results?.utterances || [];
+        const formattedSegments = utterances.length > 0
+            ? utterances.map((u: any, index: number) => ({
+                id: index + 1,
+                startStr: formatTime(u.start),
+                endStr: formatTime(u.end),
+                text: u.transcript.trim(),
+                rawStart: u.start
+            }))
+            : (result?.results?.channels[0]?.alternatives[0]?.paragraphs?.paragraphs || []).flatMap((p: any) =>
+                p.sentences.map((s: any, index: number) => ({
+                    id: index + 1,
+                    startStr: formatTime(s.start),
+                    endStr: formatTime(s.end),
+                    text: s.text.trim(),
+                    rawStart: s.start
+                }))
+            );
+
+        return formattedSegments;
+    }
 
     if (!GROQ_API_KEY) {
-        return { success: false, message: "GROQ_API_KEY is not set in .env" };
+        throw new Error("Tutup konfigurasi: DEEPGRAM_API_KEY maupun GROQ_API_KEY belum diset di file .env");
     }
+
+    console.log("Transcribing audio via Groq Whisper API (whisper-large-v3)...");
+    const groq = new Groq({ apiKey: GROQ_API_KEY });
+    const transcription = await groq.audio.transcriptions.create({
+        file: fsSync.createReadStream(audioPath),
+        model: "whisper-large-v3",
+        language: "id",
+        response_format: "verbose_json"
+    });
+
+    const segments = (transcription as any).segments || [];
+    return segments.map((segment: any, index: number) => ({
+        id: index + 1,
+        startStr: formatTime(segment.start),
+        endStr: formatTime(segment.end),
+        text: segment.text.trim(),
+        rawStart: segment.start
+    }));
+}
+
+export async function runVideoToText(fileIdOrUrl: string) {
+    const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
 
     let cleanFileId = "";
     try {
@@ -92,12 +157,10 @@ export async function runVideoToText(fileIdOrUrl: string) {
 
           const contentType = res.headers.get("content-type") || "";
           if (contentType.includes("text/html")) {
-            // HTML warning page returned, try next URL
             console.log("   -> Warning HTML page returned, trying next URL...");
             continue;
           }
 
-          // Stream reader with Promise completion to ensure file is fully written before FFmpeg reads it
           await new Promise<void>((resolve, reject) => {
             const fileStream = fsSync.createWriteStream(tempVideo);
             fileStream.on("finish", resolve);
@@ -123,21 +186,17 @@ export async function runVideoToText(fileIdOrUrl: string) {
             pump();
           });
 
-          // Check if downloaded file is non-empty
           const stat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
           if (stat.size > 1000) {
             downloaded = true;
             console.log(`   -> GDrive video fast-download finished! (Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
             break;
-          } else {
-            console.log("   -> Downloaded file is too small or incomplete, trying next URL...");
           }
         } catch (err: any) {
           console.error("Download strategy failed:", err?.message);
         }
       }
 
-      // Fallback Strategy 2: GDrive API v3 with OAuth ACCESS_TOKEN
       if (!downloaded && ACCESS_TOKEN && ACCESS_TOKEN.trim().length > 0) {
         try {
           console.log("1b. Trying GDrive API v3 with OAuth ACCESS_TOKEN...");
@@ -191,7 +250,7 @@ export async function runVideoToText(fileIdOrUrl: string) {
         );
       }
 
-      // Step 2: Extract audio locally via FFmpeg (Takes only 2-5 seconds for local file)
+      // Step 2: Extract audio locally via FFmpeg
       console.log("2. Extracting MP3 audio locally via FFmpeg...");
       const ffmpegArgs = [
         "-i", tempVideo,
@@ -207,29 +266,8 @@ export async function runVideoToText(fileIdOrUrl: string) {
       // Cleanup local video file immediately
       await fs.unlink(tempVideo).catch(() => {});
 
-      // Step 2: Transcribe via Groq API
-      console.log("2. Sending GDrive audio to Groq Whisper API...");
-      const groq = new Groq({ apiKey: GROQ_API_KEY });
-      
-      const transcription = await groq.audio.transcriptions.create({
-          file: fsSync.createReadStream(tempAudio),
-          model: "whisper-large-v3",
-          language: "id",
-          response_format: "verbose_json"
-      });
-
-      // Step 3: Format the response
-      console.log("3. Formatting transcription...");
-      const segments = (transcription as any).segments || [];
-      const formattedSegments = segments.map((segment: any, index: number) => {
-          return {
-              id: index + 1,
-              startStr: formatTime(segment.start),
-              endStr: formatTime(segment.end),
-              text: segment.text.trim(),
-              rawStart: segment.start
-          };
-      });
+      // Step 3: Transcribe via Deepgram Nova-3 or Groq Whisper
+      const formattedSegments = await transcribeAudioFile(tempAudio);
 
       // Save audio to public uploads directory for playback
       const uploadsDir = path.join(process.cwd(), "public", "uploads");
@@ -291,29 +329,8 @@ export async function uploadAndExtract(formData: FormData) {
         await execFileAsync("ffmpeg", args);
         console.log("   -> Audio successfully extracted!");
 
-        // Step 3: Transcribe via Groq API
-        console.log("2. Sending audio to Groq Whisper API...");
-        const groq = new Groq({ apiKey: GROQ_API_KEY });
-        
-        const transcription = await groq.audio.transcriptions.create({
-            file: fsSync.createReadStream(outputAudio),
-            model: "whisper-large-v3",
-            language: "id",
-            response_format: "verbose_json"
-        });
-
-        // Step 4: Format the response
-        console.log("3. Formatting transcription...");
-        const segments = (transcription as any).segments || [];
-        const formattedSegments = segments.map((segment: any, index: number) => {
-            return {
-                id: index + 1,
-                startStr: formatTime(segment.start),
-                endStr: formatTime(segment.end),
-                text: segment.text.trim(),
-                rawStart: segment.start
-            };
-        });
+        // Step 3: Transcribe via Deepgram Nova-3 or Groq Whisper
+        const formattedSegments = await transcribeAudioFile(outputAudio);
 
         // Save audio to public uploads directory for playback
         const uploadsDir = path.join(process.cwd(), "public", "uploads");
