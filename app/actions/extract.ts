@@ -21,8 +21,29 @@ function formatTime(seconds: number) {
 
 export async function extractGDriveFileId(input: string): Promise<string> {
     if (!input) return "";
-    const match = input.match(/\/d\/([a-zA-Z0-9_-]+)/) || input.match(/id=([a-zA-Z0-9_-]+)/);
-    return match ? match[1] : input.trim();
+    const trimmed = input.trim();
+    
+    // Check if user accidentally pasted a Folder link
+    if (trimmed.includes("/drive/folders/") || trimmed.includes("/folders/")) {
+        throw new Error("Link yang Anda masukkan adalah link FOLDER Google Drive. Harap buka FILE video/audio spesifik di dalam folder tersebut, klik 'Bagikan' -> 'Salin Link', lalu tempelkan link file tersebut di sini.");
+    }
+
+    const match = 
+        trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+        trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/) ||
+        trimmed.match(/id=([a-zA-Z0-9_-]+)/) ||
+        trimmed.match(/\/open\?id=([a-zA-Z0-9_-]+)/);
+
+    if (match && match[1]) {
+        return match[1];
+    }
+
+    // If string does not contain URL slashes and looks like a raw GDrive File ID
+    if (!trimmed.includes("/") && !trimmed.includes("http") && trimmed.length >= 15) {
+        return trimmed;
+    }
+
+    return "";
 }
 
 export async function runVideoToText(fileIdOrUrl: string) {
@@ -33,9 +54,15 @@ export async function runVideoToText(fileIdOrUrl: string) {
         return { success: false, message: "GROQ_API_KEY is not set in .env" };
     }
 
-    const cleanFileId = await extractGDriveFileId(fileIdOrUrl);
+    let cleanFileId = "";
+    try {
+        cleanFileId = await extractGDriveFileId(fileIdOrUrl);
+    } catch (e: any) {
+        return { success: false, message: e.message };
+    }
+
     if (!cleanFileId) {
-        return { success: false, message: "Link atau File ID Google Drive tidak valid." };
+        return { success: false, message: "Link atau File ID Google Drive tidak valid. Pastikan Anda menempelkan link khusus FILE (bukan folder)." };
     }
 
     const timestamp = Date.now();
