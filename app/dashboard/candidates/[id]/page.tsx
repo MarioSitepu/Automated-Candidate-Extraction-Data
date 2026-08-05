@@ -14,8 +14,7 @@ import {
   Volume2,
   VolumeX,
   Clock,
-  Radio,
-  Star
+  Radio
 } from "lucide-react";
 import { useState, useEffect, useRef, use } from "react";
 import { getCandidateById, updateCandidate } from "../../../actions/candidate";
@@ -520,21 +519,8 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
 
               {/* SEKSI A: Kebutuhan & Kecocokan */}
               <div className="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                <div className="border-b border-gray-200 pb-2">
                   <span className="text-xs font-bold text-teal-800 tracking-wider uppercase">A. Kebutuhan & Kecocokan</span>
-                  <div className="flex items-center space-x-2">
-                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                    <span className="text-xs font-bold text-gray-700">Rata-Rata Skor A:</span>
-                    <input 
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={seksiA.skorA || 0}
-                      disabled={isLocked}
-                      onChange={(e) => setSeksiA({ ...seksiA, skorA: Number(e.target.value) })}
-                      className="w-16 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-center text-xs font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100"
-                    />
-                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -608,21 +594,8 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
 
               {/* SEKSI B: Motivasi & Komitmen */}
               <div className="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                <div className="border-b border-gray-200 pb-2">
                   <span className="text-xs font-bold text-teal-800 tracking-wider uppercase">B. Motivasi & Komitmen</span>
-                  <div className="flex items-center space-x-2">
-                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                    <span className="text-xs font-bold text-gray-700">Rata-Rata Skor B:</span>
-                    <input 
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={seksiB.skorB || 0}
-                      disabled={isLocked}
-                      onChange={(e) => setSeksiB({ ...seksiB, skorB: Number(e.target.value) })}
-                      className="w-16 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-center text-xs font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100"
-                    />
-                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -674,21 +647,8 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
 
               {/* SEKSI C: Tujuan Hidup */}
               <div className="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                <div className="border-b border-gray-200 pb-2">
                   <span className="text-xs font-bold text-teal-800 tracking-wider uppercase">C. Tujuan Hidup</span>
-                  <div className="flex items-center space-x-2">
-                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                    <span className="text-xs font-bold text-gray-700">Rata-Rata Skor C:</span>
-                    <input 
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={seksiC.skorC || 0}
-                      disabled={isLocked}
-                      onChange={(e) => setSeksiC({ ...seksiC, skorC: Number(e.target.value) })}
-                      className="w-16 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-center text-xs font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100"
-                    />
-                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -718,21 +678,8 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
 
               {/* SEKSI D: Kondisi Ekonomi */}
               <div className="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                <div className="border-b border-gray-200 pb-2">
                   <span className="text-xs font-bold text-teal-800 tracking-wider uppercase">D. Kondisi Ekonomi</span>
-                  <div className="flex items-center space-x-2">
-                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                    <span className="text-xs font-bold text-gray-700">Rata-Rata Skor D:</span>
-                    <input 
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={seksiD.skorD || 0}
-                      disabled={isLocked}
-                      onChange={(e) => setSeksiD({ ...seksiD, skorD: Number(e.target.value) })}
-                      className="w-16 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-center text-xs font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100"
-                    />
-                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -762,21 +709,8 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
 
               {/* SEKSI E: Kesiapan Ikut Program */}
               <div className="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                <div className="border-b border-gray-200 pb-2">
                   <span className="text-xs font-bold text-teal-800 tracking-wider uppercase">E. Kesiapan Ikut Program</span>
-                  <div className="flex items-center space-x-2">
-                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                    <span className="text-xs font-bold text-gray-700">Rata-Rata Skor E:</span>
-                    <input 
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={seksiE.skorE || 0}
-                      disabled={isLocked}
-                      onChange={(e) => setSeksiE({ ...seksiE, skorE: Number(e.target.value) })}
-                      className="w-16 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-center text-xs font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100"
-                    />
-                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -817,21 +751,8 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
 
               {/* SEKSI F: Mental & Resiliensi */}
               <div className="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                <div className="border-b border-gray-200 pb-2">
                   <span className="text-xs font-bold text-teal-800 tracking-wider uppercase">F. Mental & Resiliensi</span>
-                  <div className="flex items-center space-x-2">
-                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                    <span className="text-xs font-bold text-gray-700">Rata-Rata Skor F:</span>
-                    <input 
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={seksiF.skorF || 0}
-                      disabled={isLocked}
-                      onChange={(e) => setSeksiF({ ...seksiF, skorF: Number(e.target.value) })}
-                      className="w-16 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-center text-xs font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100"
-                    />
-                  </div>
                 </div>
 
                 <div className="space-y-3">
