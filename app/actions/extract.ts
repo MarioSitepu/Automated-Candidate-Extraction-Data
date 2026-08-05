@@ -314,10 +314,12 @@ export async function runVideoToText(fileIdOrUrl: string) {
         console.log(`   -> Direct media stream URL resolved! Extracting audio...`);
 
         const ffmpegArgs = [
+          "-probesize", "5M",
+          "-analyzeduration", "5M",
           "-reconnect", "1",
           "-reconnect_streamed", "1",
           "-reconnect_delay_max", "5",
-          "-rw_timeout", "15000000",
+          "-rw_timeout", "30000000",
           "-headers", "User-Agent: Mozilla/5.0\r\n",
           "-i", streamUrl,
           "-vn",
