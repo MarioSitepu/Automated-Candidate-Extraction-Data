@@ -139,7 +139,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       );
 
       const aiResult = await extractDataFromTranscript(fullText);
-      const extractedData = aiResult.success ? aiResult.data : {};
+      const extractedData: any = aiResult.success ? aiResult.data : {};
 
       // Step 3: Save to Supabase DB
       setCurrentTask((prev) =>
@@ -163,6 +163,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         status: "Ready",
         audioUrl: extractRes.audioUrl || undefined,
         transcriptSegments: segments,
+        assessmentJson: extractedData?.assessmentJson || undefined,
       });
 
       if (!dbRes.success || !dbRes.candidate) {
@@ -250,7 +251,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       );
 
       const aiResult = await extractDataFromTranscript(fullText);
-      const extractedData = aiResult.success ? aiResult.data : {};
+      const extractedData: any = aiResult.success ? aiResult.data : {};
 
       setCurrentTask((prev) =>
         prev
@@ -273,6 +274,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         status: "Ready",
         audioUrl: extractRes.audioUrl || undefined,
         transcriptSegments: segments,
+        assessmentJson: extractedData?.assessmentJson || undefined,
       });
 
       if (!dbRes.success || !dbRes.candidate) {
