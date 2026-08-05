@@ -270,18 +270,54 @@ export async function extractDataFromTranscript(transcriptText: string) {
         console.log("Starting data extraction using Groq LLaMA 3...");
         const groq = new Groq({ apiKey: GROQ_API_KEY });
         
-        const systemPrompt = `Anda adalah Asisten HRD cerdas. 
-Tugas Anda adalah mengekstrak informasi dari teks transkrip wawancara berikut ke dalam format JSON yang valid.
-Jika informasi tidak disebutkan secara eksplisit di dalam teks, gunakan tanda hubung "-" atau tulis "Tidak disebutkan".
+        const systemPrompt = `Anda adalah Asisten HRD & Asesor Klinis Karla Bionics. 
+Tugas Anda adalah mengekstrak informasi dari teks transkrip wawancara ke dalam format JSON yang valid.
+Jika informasi tidak disebutkan secara eksplisit di dalam teks, isi dengan "-".
 
 JSON harus memiliki struktur persis seperti ini:
 {
   "nama": "string (Nama Lengkap)",
   "umur": "string (Umur dalam angka)",
   "jenisKelamin": "Laki-laki" | "Perempuan" | "",
-  "ringkasan": "string (Ringkasan aktivitas keseharian)",
-  "ekonomi": "string (Kondisi ekonomi dan finansial saat ini)",
-  "motivasi": "string (Motivasi utama membutuhkan prostetik/tangan bionik)"
+  "seksiA": {
+    "kegiatanSehariHari": "string (Cerita diri dan kegiatan sehari-hari)",
+    "riwayatKondisi": "string (Kapan amputasi/kondisi terjadi, bawaan/kecelakaan, area sensitif/nyeri/linu)",
+    "kondisiLengan": "string (Bawah siku, atas siku, tanpa jari, dsb)",
+    "perubahanKesulitan": "string (Kegiatan yang berubah & paling susah dilakukan sekarang)",
+    "pengalamanProstetik": "string (Pernah pakai tangan prostetik sebelumnya & rasanya)",
+    "bantuanSehariHari": "string (Siapa yang membantu kegiatan sehari-hari)",
+    "skorA": 0
+  },
+  "seksiB": {
+    "alasanRagaArm": "string (Kenapa ingin pakai Raga Arm)",
+    "harapanUtama": "string (Hal yang paling ingin dilakukan jika punya Raga Arm)",
+    "komitmenHarian": "string (Apakah sanggup memakai setiap hari)",
+    "kesiapanAdaptasi": "string (Skala 1-10 kesiapan belajar & adaptasi)",
+    "skorB": 0
+  },
+  "seksiC": {
+    "rencanaMasaDepan": "string (Rencana 6-12 bulan ke depan: kerja/usaha/skill)",
+    "peranRagaArm": "string (Bagaimana Raga Arm membantu target masa depan)",
+    "skorC": 0
+  },
+  "seksiD": {
+    "sumberPenghasilan": "string (Sumber & jumlah penghasilan per bulan)",
+    "tanggunganKeluarga": "string (Status menikah, anak, atau orang tua yang ditanggung)",
+    "skorD": 0
+  },
+  "seksiE": {
+    "kesiapanKeBandung": "string (Bersedia ke Bandung & pengetahuan transportasi/luar kota)",
+    "laporanPublikasi": "string (Bersedia kirim kabar per 2 minggu, video call bulanan, foto/video acara)",
+    "minatPelatihan": "string (Keinginan ikut pelatihan kerja / usaha)",
+    "skorE": 0
+  },
+  "seksiF": {
+    "tantanganBangkit": "string (Tantangan terberat disabilitas & cara bangkit dari down)",
+    "hubunganKeluarga": "string (Sikap dan hubungan dengan keluarga saat ini)",
+    "hubunganTeman": "string (Hubungan dengan teman dekat/pasangan)",
+    "kegiatanSosial": "string (Kegiatan rutin kumpul/komunitas)",
+    "skorF": 0
+  }
 }
 
 Ingat: OUTPUT HARUS HANYA BERUPA JSON OBJECT, TANPA TEKS LAIN.`;
@@ -303,7 +339,16 @@ Ingat: OUTPUT HARUS HANYA BERUPA JSON OBJECT, TANPA TEKS LAIN.`;
         
         console.log("AI Data Extraction Result:", jsonResponse);
 
-        const data = JSON.parse(jsonResponse);
+        const parsed = JSON.parse(jsonResponse);
+        const data = {
+            nama: parsed.nama || "Tanpa Nama",
+            umur: parsed.umur || "-",
+            jenisKelamin: parsed.jenisKelamin || "-",
+            ringkasan: parsed.seksiA?.kegiatanSehariHari || "-",
+            ekonomi: parsed.seksiD?.sumberPenghasilan || "-",
+            motivasi: parsed.seksiB?.alasanRagaArm || "-",
+            assessmentJson: JSON.stringify(parsed)
+        };
         return { success: true, data };
 
     } catch (error: any) {

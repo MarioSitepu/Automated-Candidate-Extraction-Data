@@ -29,6 +29,7 @@ model Candidate {
   status         String   @default("Ready") // "Ready", "Processing", "Verified"
   audioUrl       String?
   transcriptJson String?
+  assessmentJson String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }

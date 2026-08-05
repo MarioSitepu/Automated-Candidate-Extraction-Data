@@ -3,10 +3,8 @@
 import Link from "next/link";
 import { 
   ArrowLeft, 
-  Save, 
   CheckCircle, 
   Mic, 
-  RefreshCw, 
   Cpu, 
   Sparkles, 
   Loader2, 
@@ -16,7 +14,8 @@ import {
   Volume2,
   VolumeX,
   Clock,
-  Radio
+  Radio,
+  Star
 } from "lucide-react";
 import { useState, useEffect, useRef, use } from "react";
 import { getCandidateById, updateCandidate } from "../../../actions/candidate";
@@ -32,15 +31,62 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
   const [transcript, setTranscript] = useState<any[]>([]);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
-  // Form states
+  // Form states - Demographics
   const [nama, setNama] = useState("");
   const [umur, setUmur] = useState("");
   const [jenisKelamin, setJenisKelamin] = useState("");
-  const [ringkasan, setRingkasan] = useState("");
-  const [ekonomi, setEkonomi] = useState("");
-  const [motivasi, setMotivasi] = useState("");
-  const [hobi, setHobi] = useState("");
   const [status, setStatus] = useState("Ready");
+
+  // Form states - Seksi A: Kebutuhan & Kecocokan
+  const [seksiA, setSeksiA] = useState({
+    kegiatanSehariHari: "",
+    riwayatKondisi: "",
+    kondisiLengan: "",
+    perubahanKesulitan: "",
+    pengalamanProstetik: "",
+    bantuanSehariHari: "",
+    skorA: 0,
+  });
+
+  // Form states - Seksi B: Motivasi & Komitmen
+  const [seksiB, setSeksiB] = useState({
+    alasanRagaArm: "",
+    harapanUtama: "",
+    komitmenHarian: "",
+    kesiapanAdaptasi: "",
+    skorB: 0,
+  });
+
+  // Form states - Seksi C: Tujuan Hidup
+  const [seksiC, setSeksiC] = useState({
+    rencanaMasaDepan: "",
+    peranRagaArm: "",
+    skorC: 0,
+  });
+
+  // Form states - Seksi D: Kondisi Ekonomi
+  const [seksiD, setSeksiD] = useState({
+    sumberPenghasilan: "",
+    tanggunganKeluarga: "",
+    skorD: 0,
+  });
+
+  // Form states - Seksi E: Kesiapan Ikut Program
+  const [seksiE, setSeksiE] = useState({
+    kesiapanKeBandung: "",
+    laporanPublikasi: "",
+    minatPelatihan: "",
+    skorE: 0,
+  });
+
+  // Form states - Seksi F: Mental & Resiliensi
+  const [seksiF, setSeksiF] = useState({
+    tantanganBangkit: "",
+    hubunganKeluarga: "",
+    hubunganTeman: "",
+    kegiatanSosial: "",
+    skorF: 0,
+  });
 
   // Audio Player & Sync states
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -63,12 +109,27 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
         setNama(c.nama || "");
         setUmur(c.umur || "");
         setJenisKelamin(c.jenisKelamin || "");
-        setRingkasan(c.ringkasan || "");
-        setEkonomi(c.ekonomi || "");
-        setMotivasi(c.motivasi || "");
-        setHobi(c.hobi || "");
         setStatus(c.status || "Ready");
         setTranscript(res.transcriptSegments || []);
+
+        if (c.assessmentJson) {
+          try {
+            const parsed = JSON.parse(c.assessmentJson);
+            if (parsed.seksiA) setSeksiA((prev) => ({ ...prev, ...parsed.seksiA }));
+            if (parsed.seksiB) setSeksiB((prev) => ({ ...prev, ...parsed.seksiB }));
+            if (parsed.seksiC) setSeksiC((prev) => ({ ...prev, ...parsed.seksiC }));
+            if (parsed.seksiD) setSeksiD((prev) => ({ ...prev, ...parsed.seksiD }));
+            if (parsed.seksiE) setSeksiE((prev) => ({ ...prev, ...parsed.seksiE }));
+            if (parsed.seksiF) setSeksiF((prev) => ({ ...prev, ...parsed.seksiF }));
+          } catch (e) {
+            console.error("Failed to parse assessmentJson:", e);
+          }
+        } else {
+          // Fallback legacy values
+          if (c.ringkasan) setSeksiA((prev) => ({ ...prev, kegiatanSehariHari: c.ringkasan }));
+          if (c.motivasi) setSeksiB((prev) => ({ ...prev, alasanRagaArm: c.motivasi }));
+          if (c.ekonomi) setSeksiD((prev) => ({ ...prev, sumberPenghasilan: c.ekonomi }));
+        }
       } else {
         setMessage({ text: res.message || "Gagal memuat data kandidat", type: "error" });
       }
@@ -147,15 +208,24 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
 
     const newStatus = lockData ? "Verified" : status;
 
+    const assessmentPayload = {
+      seksiA,
+      seksiB,
+      seksiC,
+      seksiD,
+      seksiE,
+      seksiF,
+    };
+
     const res = await updateCandidate(candidate.id, {
       nama,
       umur,
       jenisKelamin,
-      ringkasan,
-      ekonomi,
-      motivasi,
-      hobi,
+      ringkasan: seksiA.kegiatanSehariHari || "-",
+      ekonomi: seksiD.sumberPenghasilan || "-",
+      motivasi: seksiB.alasanRagaArm || "-",
       status: newStatus,
+      assessmentJson: JSON.stringify(assessmentPayload),
     });
 
     setSaving(false);
@@ -195,7 +265,6 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
     );
   }
 
-  // Sample fallback audio URL for interactive player demo
   const sampleAudioUrl = candidate?.audioUrl || "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
 
   return (
@@ -324,7 +393,7 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
               </button>
             </div>
 
-            {/* Transcript Scrollable Area with Interactive Click-to-Seek */}
+            {/* Transcript Scrollable Area */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {transcript.length === 0 ? (
                 <div className="text-center text-gray-400 text-xs py-10">
@@ -384,7 +453,7 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
           </div>
         </div>
 
-        {/* Right Column: AI Validation */}
+        {/* Right Column: AI Assessment Form (Demographics + Seksi A-F) */}
         <div className="w-1/2 flex flex-col overflow-hidden bg-[#F8FAFC] p-6">
           <div className="bg-white rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-gray-100 flex-1 flex flex-col overflow-hidden">
             {/* Header Right Panel */}
@@ -392,15 +461,15 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
               <div>
                 <div className="flex items-center space-x-2 mb-1">
                   <Cpu className="w-5 h-5 text-teal-700" />
-                  <h2 className="text-lg font-bold text-gray-900">AI Extraction Validation</h2>
+                  <h2 className="text-lg font-bold text-gray-900">Form Asesmen & Profil Kandidat</h2>
                 </div>
                 <p className="text-[11px] text-gray-500 font-mono">
-                  {isLocked ? "Data ini telah dikunci dan tidak dapat diubah lagi." : "Review and refine AI-extracted clinical data before locking."}
+                  {isLocked ? "Data ini telah dikunci dan tidak dapat diubah lagi." : "Review, lengkapi jawaban asesmen, dan beri skor sebelum mengunci data."}
                 </p>
               </div>
               <div className="flex items-center space-x-1.5 px-3 py-1.5 bg-teal-50 rounded-full border border-teal-100">
                 <Sparkles className="w-3.5 h-3.5 text-teal-600" />
-                <span className="text-[11px] font-bold text-teal-800 uppercase tracking-wide">Confidence: 94%</span>
+                <span className="text-[11px] font-bold text-teal-800 uppercase tracking-wide">6 Seksi Asesmen</span>
               </div>
             </div>
 
@@ -408,9 +477,9 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
             <div className="flex-1 overflow-y-auto p-6 space-y-8">
               
               {/* DEMOGRAPHICS */}
-              <div className="space-y-4">
-                <div className="flex items-center space-x-2 border-b border-gray-100 pb-2">
-                  <span className="text-[10px] font-bold text-gray-500 tracking-widest uppercase">DEMOGRAPHICS</span>
+              <div className="space-y-4 bg-gray-50/50 p-4 rounded-xl border border-gray-100">
+                <div className="flex items-center space-x-2 border-b border-gray-200 pb-2">
+                  <span className="text-xs font-bold text-teal-800 tracking-wider uppercase">DEMOGRAPHIC PROFILE</span>
                 </div>
                 <div className="grid grid-cols-12 gap-4">
                   <div className="col-span-6 space-y-1.5">
@@ -420,7 +489,7 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                       value={nama} 
                       disabled={isLocked}
                       onChange={(e) => setNama(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed" 
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed" 
                     />
                   </div>
                   <div className="col-span-2 space-y-1.5">
@@ -430,7 +499,7 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                       value={umur} 
                       disabled={isLocked}
                       onChange={(e) => setUmur(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed" 
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed" 
                     />
                   </div>
                   <div className="col-span-4 space-y-1.5">
@@ -439,7 +508,7 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                       value={jenisKelamin} 
                       disabled={isLocked}
                       onChange={(e) => setJenisKelamin(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                     >
                       <option value="">Pilih</option>
                       <option value="Laki-laki">Laki-laki</option>
@@ -449,64 +518,366 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                 </div>
               </div>
 
-              {/* PSYCHOSOCIAL PROFILE */}
-              <div className="space-y-4">
-                <div className="flex items-center space-x-2 border-b border-gray-100 pb-2">
-                  <span className="text-[10px] font-bold text-gray-500 tracking-widest uppercase">PSYCHOSOCIAL PROFILE</span>
-                </div>
-                
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-gray-600">Ringkasan Keseharian</label>
+              {/* SEKSI A: Kebutuhan & Kecocokan */}
+              <div className="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                  <span className="text-xs font-bold text-teal-800 tracking-wider uppercase">A. Kebutuhan & Kecocokan</span>
+                  <div className="flex items-center space-x-2">
+                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                    <span className="text-xs font-bold text-gray-700">Rata-Rata Skor A:</span>
+                    <input 
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={seksiA.skorA || 0}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiA({ ...seksiA, skorA: Number(e.target.value) })}
+                      className="w-16 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-center text-xs font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100"
+                    />
                   </div>
-                  <textarea 
-                    rows={3} 
-                    value={ringkasan}
-                    disabled={isLocked}
-                    onChange={(e) => setRingkasan(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 leading-relaxed resize-none disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
-                  />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-600">Hobi & Aktivitas Spesifik</label>
-                  <input 
-                    type="text"
-                    value={hobi}
-                    disabled={isLocked}
-                    onChange={(e) => setHobi(e.target.value)}
-                    placeholder="Contoh: Otomotif, Mekanik, Memasak"
-                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
-                  />
-                </div>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">1. Bisa ceritakan sedikit tentang diri Bapak/Ibu dan kegiatan sehari-hari?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiA.kegiatanSehariHari}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiA({ ...seksiA, kegiatanSehariHari: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-600">Kondisi Ekonomi & Finansial</label>
-                  <textarea 
-                    rows={2} 
-                    value={ekonomi}
-                    disabled={isLocked}
-                    onChange={(e) => setEkonomi(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 leading-relaxed resize-none disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
-                  />
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">2. Kalau kondisinya boleh tau dari kapan dan apakah kecelakaan atau bawaan lahir? Apakah ada bagian yang sensitif sakit/nyeri/linu jika disentuh atau kondisi dingin?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiA.riwayatKondisi}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiA({ ...seksiA, riwayatKondisi: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">3. Kondisi lengannya bawah siku/atas siku/tanpa jari atau gimana?</label>
+                    <input 
+                      type="text" 
+                      value={seksiA.kondisiLengan}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiA({ ...seksiA, kondisiLengan: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">4. Apa saja kegiatan sehari-hari yang berubah sebelum dan sesudah amputasi? apa kegiatan sehari-hari yang paling susah Bapak/Ibu lakukan sekarang dan sebenarnya sangat butuh/ingin dilakukan?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiA.perubahanKesulitan}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiA({ ...seksiA, perubahanKesulitan: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">5. Pernah pakai tangan prostetik sebelumnya? Bagaimana rasanya?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiA.pengalamanProstetik}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiA({ ...seksiA, pengalamanProstetik: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">6. Sekarang biasanya dibantu siapa untuk kegiatan sehari-hari?</label>
+                    <input 
+                      type="text" 
+                      value={seksiA.bantuanSehariHari}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiA({ ...seksiA, bantuanSehariHari: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-100"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* PROSTHETIC REQUIREMENTS */}
-              <div className="space-y-4">
-                <div className="flex items-center space-x-2 border-b border-gray-100 pb-2">
-                  <span className="text-[10px] font-bold text-gray-500 tracking-widest uppercase">PROSTHETIC REQUIREMENTS</span>
+              {/* SEKSI B: Motivasi & Komitmen */}
+              <div className="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                  <span className="text-xs font-bold text-teal-800 tracking-wider uppercase">B. Motivasi & Komitmen</span>
+                  <div className="flex items-center space-x-2">
+                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                    <span className="text-xs font-bold text-gray-700">Rata-Rata Skor B:</span>
+                    <input 
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={seksiB.skorB || 0}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiB({ ...seksiB, skorB: Number(e.target.value) })}
+                      className="w-16 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-center text-xs font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100"
+                    />
+                  </div>
                 </div>
-                
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-600">Motivasi Utama</label>
-                  <textarea 
-                    rows={2} 
-                    value={motivasi}
-                    disabled={isLocked}
-                    onChange={(e) => setMotivasi(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 leading-relaxed resize-none disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
-                  />
+
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">1. Kenapa Bapak/Ibu ingin pakai Raga Arm?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiB.alasanRagaArm}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiB({ ...seksiB, alasanRagaArm: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">2. Kalau punya Raga Arm nanti, hal apa yang paling ingin Bapak/Ibu lakukan?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiB.harapanUtama}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiB({ ...seksiB, harapanUtama: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">3. Apakah Bapak/Ibu menyanggupi untuk memakai Raga Arm setiap hari?</label>
+                    <input 
+                      type="text" 
+                      value={seksiB.komitmenHarian}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiB({ ...seksiB, komitmenHarian: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">4. Dari angka 1 sampai 10, seberapa siap Bapak/Ibu belajar pakai dan adaptasi alat baru ini?</label>
+                    <input 
+                      type="text" 
+                      value={seksiB.kesiapanAdaptasi}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiB({ ...seksiB, kesiapanAdaptasi: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-100"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SEKSI C: Tujuan Hidup */}
+              <div className="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                  <span className="text-xs font-bold text-teal-800 tracking-wider uppercase">C. Tujuan Hidup</span>
+                  <div className="flex items-center space-x-2">
+                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                    <span className="text-xs font-bold text-gray-700">Rata-Rata Skor C:</span>
+                    <input 
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={seksiC.skorC || 0}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiC({ ...seksiC, skorC: Number(e.target.value) })}
+                      className="w-16 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-center text-xs font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">1. Dalam waktu 6–12 bulan ke depan, apa rencana Bapak/Ibu? atau target yang mau dilakukan? Mau kerja lagi/belajar skill baru/usaha atau apa nih?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiC.rencanaMasaDepan}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiC({ ...seksiC, rencanaMasaDepan: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">2. Menurut Bapak/Ibu, Raga Arm bisa membantu bagaimana? nantinya akan dipakai untuk apa yang sejalan dengan rencana/target tadi?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiC.peranRagaArm}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiC({ ...seksiC, peranRagaArm: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SEKSI D: Kondisi Ekonomi */}
+              <div className="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                  <span className="text-xs font-bold text-teal-800 tracking-wider uppercase">D. Kondisi Ekonomi</span>
+                  <div className="flex items-center space-x-2">
+                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                    <span className="text-xs font-bold text-gray-700">Rata-Rata Skor D:</span>
+                    <input 
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={seksiD.skorD || 0}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiD({ ...seksiD, skorD: Number(e.target.value) })}
+                      className="w-16 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-center text-xs font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">1. Saat ini penghasilan Bapak/Ibu dari mana? Kurang lebih berapa per bulan sebelum dan sesudah kecelakaan?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiD.sumberPenghasilan}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiD({ ...seksiD, sumberPenghasilan: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">2. Apa sudah menikah dan punya anak? Ada anak/istri atau orang tua yang jadi tanggungan?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiD.tanggunganKeluarga}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiD({ ...seksiD, tanggunganKeluarga: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SEKSI E: Kesiapan Ikut Program */}
+              <div className="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                  <span className="text-xs font-bold text-teal-800 tracking-wider uppercase">E. Kesiapan Ikut Program</span>
+                  <div className="flex items-center space-x-2">
+                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                    <span className="text-xs font-bold text-gray-700">Rata-Rata Skor E:</span>
+                    <input 
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={seksiE.skorE || 0}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiE({ ...seksiE, skorE: Number(e.target.value) })}
+                      className="w-16 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-center text-xs font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">1. Jika terpilih dan harus ke Bandung, apakah bersedia dan sudah tahu transportasinya naik apa saja? Sudah pernah ke luar kota sebelumnya?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiE.kesiapanKeBandung}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiE({ ...seksiE, kesiapanKeBandung: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">2. Apakah Bapak/Ibu bersedia memberi kabar perkembangan, misalnya lewat foto atau video per 2 minggu? Lalu setiap 1 bulan video call selama 10 menit? Dan jika ada kegiatan khusus seperti undangan/acara penting/dll, apa berkenan foto/video sambil menggunakan Raga Arm?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiE.laporanPublikasi}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiE({ ...seksiE, laporanPublikasi: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">3. Kalau ada pelatihan kerja atau pelatihan usaha, apakah Bapak/Ibu mau ikut? Inginnya pelatihan kerja apa atau pelatihan usaha seperti apa?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiE.minatPelatihan}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiE({ ...seksiE, minatPelatihan: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SEKSI F: Mental & Resiliensi */}
+              <div className="space-y-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                  <span className="text-xs font-bold text-teal-800 tracking-wider uppercase">F. Mental & Resiliensi</span>
+                  <div className="flex items-center space-x-2">
+                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                    <span className="text-xs font-bold text-gray-700">Rata-Rata Skor F:</span>
+                    <input 
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={seksiF.skorF || 0}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiF({ ...seksiF, skorF: Number(e.target.value) })}
+                      className="w-16 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-center text-xs font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">1. Apa tantangan paling berat karena kondisi disabilitasnya? Sempat ngedown/ga percaya diri atau gimana boleh ceritain? Gimana bangkitnya dari perasaan itu?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiF.tantanganBangkit}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiF({ ...seksiF, tantanganBangkit: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">2. Kalau hubungan sama keluarga gimana? Bagaimana sikap keluarga terhadap kondisi sekarang?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiF.hubunganKeluarga}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiF({ ...seksiF, hubunganKeluarga: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">3. Kalau sama teman-teman gimana? Ada teman dekat/pasangan?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiF.hubunganTeman}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiF({ ...seksiF, hubunganTeman: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">4. Ada kegiatan rutin kumpul sama orang-orang lain apa aja atau kapan aja?</label>
+                    <textarea 
+                      rows={2} 
+                      value={seksiF.kegiatanSosial}
+                      disabled={isLocked}
+                      onChange={(e) => setSeksiF({ ...seksiF, kegiatanSosial: e.target.value })}
+                      className="w-full px-3 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none disabled:bg-gray-100"
+                    />
+                  </div>
                 </div>
               </div>
 

@@ -14,6 +14,7 @@ export interface CandidateInput {
   status?: string;
   audioUrl?: string;
   transcriptSegments?: any[];
+  assessmentJson?: string;
 }
 
 async function generateCandidateCode(): Promise<string> {
@@ -64,6 +65,9 @@ export async function createCandidate(data: CandidateInput) {
 
     if (data.audioUrl) {
       createData.audioUrl = data.audioUrl;
+    }
+    if (data.assessmentJson) {
+      createData.assessmentJson = data.assessmentJson;
     }
 
     const candidate = await prisma.candidate.create({
@@ -159,6 +163,7 @@ export async function updateCandidate(id: string, data: Partial<CandidateInput>)
     if (data.hobi !== undefined) updateData.hobi = data.hobi;
     if (data.status !== undefined) updateData.status = data.status;
     if (data.audioUrl !== undefined) updateData.audioUrl = data.audioUrl;
+    if (data.assessmentJson !== undefined) updateData.assessmentJson = data.assessmentJson;
     if (data.transcriptSegments !== undefined) {
       updateData.transcriptJson = JSON.stringify(data.transcriptSegments);
     }
