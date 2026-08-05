@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { 
   Bell, 
-  Search, 
   User, 
   Video, 
   Hourglass, 
@@ -93,16 +92,7 @@ export default function DashboardPage() {
       {/* Header */}
       <header className="flex justify-between items-center p-6 pb-4">
         <h2 className="text-xl font-bold text-gray-800">Monitoring View</h2>
-        <div className="flex items-center space-x-6">
-          <div className="relative">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-            <input 
-              type="text" 
-              placeholder="Search ID or Name..." 
-              className="pl-9 pr-4 py-2 border border-gray-200 rounded-full text-sm w-64 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-            />
-          </div>
-
+        <div className="flex items-center space-x-4">
           {/* Bell Notification Button & Popover */}
           <div className="relative">
             <button 
