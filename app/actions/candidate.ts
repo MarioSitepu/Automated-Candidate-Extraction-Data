@@ -16,12 +16,34 @@ export interface CandidateInput {
   transcriptSegments?: any[];
 }
 
-// Generate unique candidate code: KB-2024-001, KB-2024-002, etc.
 async function generateCandidateCode(): Promise<string> {
   const currentYear = new Date().getFullYear();
-  const count = await prisma.candidate.count();
-  const nextNum = (count + 1).toString().padStart(3, "0");
-  return `KB-${currentYear}-${nextNum}`;
+  
+  // Find candidate with the latest creation date to get the highest code
+  const lastCandidate = await prisma.candidate.findFirst({
+    orderBy: { createdAt: "desc" },
+    select: { candidateCode: true },
+  });
+
+  let nextNumber = 1;
+  if (lastCandidate && lastCandidate.candidateCode) {
+    const match = lastCandidate.candidateCode.match(/(\d+)$/);
+    if (match) {
+      nextNumber = parseInt(match[1], 10) + 1;
+    }
+  }
+
+  // Double-check uniqueness in database to prevent any collision
+  let candidateCode = `KB-${currentYear}-${nextNumber.toString().padStart(3, "0")}`;
+  let exists = await prisma.candidate.findUnique({ where: { candidateCode } });
+
+  while (exists) {
+    nextNumber++;
+    candidateCode = `KB-${currentYear}-${nextNumber.toString().padStart(3, "0")}`;
+    exists = await prisma.candidate.findUnique({ where: { candidateCode } });
+  }
+
+  return candidateCode;
 }
 
 export async function createCandidate(data: CandidateInput) {
