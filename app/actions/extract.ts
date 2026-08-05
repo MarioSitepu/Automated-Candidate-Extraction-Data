@@ -207,50 +207,57 @@ export async function runVideoToText(fileIdOrUrl: string) {
     const tempAudio = path.join(process.cwd(), `tmp_gdrive_${timestamp}.mp3`);
 
     try {
-      // Step 1: Download GDrive video via Native HTTPS Downloader (No body timeout limit)
+      // Step 1: Fast Audio-Only Direct Network Stream (Skips 600MB Video Track, completes in 5-15 seconds)
       const tempVideo = path.join(process.cwd(), `tmp_gdrive_video_${timestamp}.mp4`);
-      console.log(`1. Fast-downloading GDrive stream via Native HTTPS: ${cleanFileId}`);
-      
-      let downloaded = await downloadGDriveNative(cleanFileId, tempVideo);
+      let downloaded = false;
 
-      if (downloaded) {
-        const stat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
-        console.log(`   -> GDrive video native download finished! (Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
-      }
-
-      // Strategy 2: OAuth API v3 if ACCESS_TOKEN is present
-      if (!downloaded && ACCESS_TOKEN && ACCESS_TOKEN.trim().length > 0) {
-        try {
-          console.log("1b. Trying GDrive API v3 with OAuth ACCESS_TOKEN...");
-          const gdriveApiUrl = `https://www.googleapis.com/drive/v3/files/${cleanFileId}?alt=media`;
-          downloaded = await downloadGDriveNative(cleanFileId, tempVideo);
-        } catch (err: any) {
-          console.error("OAuth download failed:", err?.message);
+      try {
+        console.log(`1. Extracting audio directly over network stream: ${cleanFileId}`);
+        const streamUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`;
+        const ffmpegArgs = [
+          "-reconnect", "1",
+          "-reconnect_streamed", "1",
+          "-reconnect_delay_max", "5",
+          "-rw_timeout", "15000000",
+          "-headers", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n",
+          "-i", streamUrl,
+          "-vn",
+          "-c:a", "libmp3lame",
+          "-q:a", "2",
+          "-y",
+          tempAudio
+        ];
+        await execFileAsync("ffmpeg", ffmpegArgs);
+        const stat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
+        if (stat.size > 1000) {
+          downloaded = true;
+          console.log(`   -> Fast Audio-Only Stream Extraction finished! (Audio Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
         }
+      } catch (err: any) {
+        console.log("   -> Direct network stream extraction failed, falling back to full GDrive downloader:", err?.message);
       }
 
-      // Strategy 3: FFmpeg Direct Connection Fallback
+      // Strategy 2: Fallback to full native HTTPS video file downloader if direct stream failed
       if (!downloaded) {
-        try {
-          console.log("1c. Trying FFmpeg Direct Stream fallback...");
-          const ffmpegDirectUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`;
-          const args = [
-            "-rw_timeout", "15000000",
-            "-i", ffmpegDirectUrl,
+        console.log(`2. Falling back to native GDrive video downloader: ${cleanFileId}`);
+        downloaded = await downloadGDriveNative(cleanFileId, tempVideo);
+
+        if (downloaded) {
+          const stat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
+          console.log(`   -> GDrive video native download finished! (Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
+          
+          // Extract audio locally from tempVideo
+          console.log("   -> Extracting MP3 audio locally via FFmpeg...");
+          const ffmpegArgs = [
+            "-i", tempVideo,
             "-vn",
             "-c:a", "libmp3lame",
             "-q:a", "2",
             "-y",
             tempAudio
           ];
-          await execFileAsync("ffmpeg", args);
-          const stat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
-          if (stat.size > 1000) {
-            downloaded = true;
-            console.log("   -> FFmpeg direct stream successfully extracted audio!");
-          }
-        } catch (err: any) {
-          console.error("FFmpeg direct stream fallback failed:", err?.message);
+          await execFileAsync("ffmpeg", ffmpegArgs);
+          await fs.unlink(tempVideo).catch(() => {});
         }
       }
 
