@@ -69,67 +69,101 @@ export async function runVideoToText(fileIdOrUrl: string) {
     const tempAudio = path.join(process.cwd(), `tmp_gdrive_${timestamp}.mp3`);
 
     try {
-      // Candidate download URLs for public & direct GDrive streams
+      // Step 1: Download GDrive video via Node.js Fast Stream Downloader
+      const tempVideo = path.join(process.cwd(), `tmp_gdrive_video_${timestamp}.mp4`);
+      let downloaded = false;
+
       const candidateUrls = [
         `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`,
         `https://drive.google.com/uc?export=download&id=${cleanFileId}&confirm=t`,
         `https://drive.google.com/uc?id=${cleanFileId}&export=download`,
       ];
 
-      let downloaded = false;
-      let lastError: any = null;
-
-      // Strategy 1: Try public GDrive direct URLs (works for shared links without OAuth token expiry)
       for (const downloadUrl of candidateUrls) {
         try {
-          console.log(`1. Trying GDrive stream: ${downloadUrl}`);
-          const args = [
-            "-rw_timeout", "15000000", // 15 seconds max connection timeout to prevent hanging
-            "-i", downloadUrl,
-            "-vn",
-            "-c:a", "libmp3lame",
-            "-q:a", "2",
-            "-y",
-            tempAudio
-          ];
-          await execFileAsync("ffmpeg", args);
+          console.log(`1. Fast-downloading GDrive stream: ${downloadUrl}`);
+          const res = await fetch(downloadUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+          });
+
+          if (!res.ok || !res.body) continue;
+
+          const contentType = res.headers.get("content-type") || "";
+          if (contentType.includes("text/html")) {
+            // HTML warning page returned, try next URL
+            console.log("   -> Warning HTML page returned, trying next URL...");
+            continue;
+          }
+
+          const fileStream = fsSync.createWriteStream(tempVideo);
+          // Stream reader for maximum download speed
+          const reader = (res.body as any).getReader();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            fileStream.write(Buffer.from(value));
+          }
+          fileStream.end();
+
           downloaded = true;
-          console.log("   -> GDrive audio successfully extracted!");
+          console.log("   -> GDrive video fast-download finished!");
           break;
         } catch (err: any) {
-          lastError = err;
+          console.error("Download strategy failed:", err?.message);
         }
       }
 
-      // Strategy 2: If public stream failed and ACCESS_TOKEN is present, try OAuth API v3
+      // Fallback Strategy 2: GDrive API v3 with OAuth ACCESS_TOKEN
       if (!downloaded && ACCESS_TOKEN && ACCESS_TOKEN.trim().length > 0) {
         try {
           console.log("1b. Trying GDrive API v3 with OAuth ACCESS_TOKEN...");
           const gdriveApiUrl = `https://www.googleapis.com/drive/v3/files/${cleanFileId}?alt=media`;
-          const authHeader = `Authorization: Bearer ${ACCESS_TOKEN.trim()}\r\n`;
-          const args = [
-            "-rw_timeout", "15000000",
-            "-headers", authHeader,
-            "-i", gdriveApiUrl,
-            "-vn",
-            "-c:a", "libmp3lame",
-            "-q:a", "2",
-            "-y",
-            tempAudio
-          ];
-          await execFileAsync("ffmpeg", args);
-          downloaded = true;
-          console.log("   -> GDrive audio successfully extracted via OAuth API!");
+          const res = await fetch(gdriveApiUrl, {
+            headers: {
+              Authorization: `Bearer ${ACCESS_TOKEN.trim()}`,
+            },
+          });
+
+          if (res.ok && res.body) {
+            const fileStream = fsSync.createWriteStream(tempVideo);
+            const reader = (res.body as any).getReader();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              fileStream.write(Buffer.from(value));
+            }
+            fileStream.end();
+            downloaded = true;
+            console.log("   -> GDrive API v3 download finished!");
+          }
         } catch (err: any) {
-          lastError = err;
+          console.error("OAuth download failed:", err?.message);
         }
       }
 
       if (!downloaded) {
         throw new Error(
-          "Gagal mengunduh file dari Google Drive. Pastikan akses file di Google Drive diatur ke 'Siapa saja yang memiliki link' (Anyone with the link can view)."
+          "Gagal mengunduh file dari Google Drive. Harap pastikan akses file di Google Drive diatur ke 'Siapa saja yang memiliki link' (Anyone with the link can view)."
         );
       }
+
+      // Step 2: Extract audio locally via FFmpeg (Takes only 2-5 seconds for local file)
+      console.log("2. Extracting MP3 audio locally via FFmpeg...");
+      const ffmpegArgs = [
+        "-i", tempVideo,
+        "-vn",
+        "-c:a", "libmp3lame",
+        "-q:a", "2",
+        "-y",
+        tempAudio
+      ];
+      await execFileAsync("ffmpeg", ffmpegArgs);
+      console.log("   -> Audio extraction finished!");
+
+      // Cleanup local video file immediately
+      await fs.unlink(tempVideo).catch(() => {});
 
       // Step 2: Transcribe via Groq API
       console.log("2. Sending GDrive audio to Groq Whisper API...");

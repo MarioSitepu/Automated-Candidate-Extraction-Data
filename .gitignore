@@ -45,3 +45,5 @@ next-env.d.ts
 # Prisma SQLite Database
 *.db
 *.db-journal
+tmp_*
+public/uploads/*
