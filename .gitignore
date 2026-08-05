@@ -46,4 +46,6 @@ next-env.d.ts
 *.db
 *.db-journal
 tmp_*
+temp_*
+*.part*
 public/uploads/*
