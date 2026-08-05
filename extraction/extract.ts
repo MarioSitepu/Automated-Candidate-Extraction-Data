@@ -153,7 +153,7 @@ export async function runVideoToText(fileIdOrUrl: string) {
           text: u.transcript.trim(),
           rawStart: u.start
         }))
-      : (result.results?.channels[0]?.alternatives[0]?.paragraphs?.paragraphs || []).flatMap((p: any) =>
+      : ((response as any)?.results?.channels[0]?.alternatives[0]?.paragraphs?.paragraphs || []).flatMap((p: any) =>
           p.sentences.map((s: any, index: number) => ({
             id: index + 1,
             startStr: formatTime(s.start),
@@ -246,7 +246,7 @@ export async function uploadAndExtract(formData: FormData) {
           text: u.transcript.trim(),
           rawStart: u.start
         }))
-      : (result.results?.channels[0]?.alternatives[0]?.paragraphs?.paragraphs || []).flatMap((p: any) =>
+      : ((response as any)?.results?.channels[0]?.alternatives[0]?.paragraphs?.paragraphs || []).flatMap((p: any) =>
           p.sentences.map((s: any, index: number) => ({
             id: index + 1,
             startStr: formatTime(s.start),
