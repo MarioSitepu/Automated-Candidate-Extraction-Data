@@ -19,7 +19,7 @@ function formatTime(seconds: number) {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${millis.toString().padStart(3, '0')}`;
 }
 
-export function extractGDriveFileId(input: string): string {
+export async function extractGDriveFileId(input: string): Promise<string> {
     if (!input) return "";
     const match = input.match(/\/d\/([a-zA-Z0-9_-]+)/) || input.match(/id=([a-zA-Z0-9_-]+)/);
     return match ? match[1] : input.trim();
@@ -33,7 +33,7 @@ export async function runVideoToText(fileIdOrUrl: string) {
         return { success: false, message: "GROQ_API_KEY is not set in .env" };
     }
 
-    const cleanFileId = extractGDriveFileId(fileIdOrUrl);
+    const cleanFileId = await extractGDriveFileId(fileIdOrUrl);
     if (!cleanFileId) {
         return { success: false, message: "Link atau File ID Google Drive tidak valid." };
     }
