@@ -189,16 +189,28 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
 
     } catch (error: any) {
       console.error("Background upload error:", error);
+      let formattedMsg = error.message || "Gagal memproses file.";
+
+      if (
+        formattedMsg.includes("Unexpected end of form") ||
+        formattedMsg.includes("maxBodySize") ||
+        formattedMsg.includes("payload") ||
+        formattedMsg.includes("413")
+      ) {
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(0);
+        formattedMsg = `⚠️ Ukuran file Anda (${sizeMb} MB) melebihi batas upload langsung (500 MB). Harap gunakan tab 'Google Drive' untuk memproses file berukuran besar tanpa hambatan.`;
+      }
+
       setCurrentTask({
         fileName: file.name,
         status: "error",
-        progressText: "Terjadi kesalahan saat memproses.",
-        errorMsg: error.message || "Gagal memproses file.",
+        progressText: "Ukuran file melebihi batas 500 MB.",
+        errorMsg: formattedMsg,
       });
 
       addNotification({
-        title: "Gagal Memproses File",
-        message: error.message || `File ${file.name} gagal diproses.`,
+        title: "File Melebihi Batas (500 MB)",
+        message: formattedMsg,
         type: "error",
       });
     }

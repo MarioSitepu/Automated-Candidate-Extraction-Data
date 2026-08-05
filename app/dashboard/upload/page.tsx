@@ -16,6 +16,15 @@ export default function UploadPage() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
+
+    const maxSizeBytes = 500 * 1024 * 1024; // 500 MB
+    if (selectedFile.size > maxSizeBytes) {
+      const sizeMb = (selectedFile.size / (1024 * 1024)).toFixed(0);
+      alert(`⚠️ Peringatan Ukuran File:\nUkuran file Anda (${sizeMb} MB) melebihi batas upload langsung (500 MB).\n\nSilakan beralih ke tab "Google Drive (Bebas Ukuran)" di atas untuk memproses file video berukuran besar tanpa hambatan!`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     startUpload(selectedFile);
   };
 
