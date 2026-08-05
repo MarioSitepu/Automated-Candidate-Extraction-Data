@@ -375,10 +375,13 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Table Section */}
+        {/* Table Section: Data Hasil Ekstraksi */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="flex justify-between items-center p-6 border-b border-gray-50">
-            <h3 className="text-base font-bold text-gray-800">Aktivitas Kandidat Terbaru (Database)</h3>
+            <div>
+              <h3 className="text-base font-bold text-gray-800">Data Hasil Ekstraksi</h3>
+              <p className="text-xs text-teal-600 font-medium mt-0.5">Data Real Supabase PostgreSQL</p>
+            </div>
             <Link href="/dashboard/candidates" className="text-teal-600 text-sm font-medium flex items-center hover:text-teal-700">
               Lihat Semua <ArrowRight className="w-4 h-4 ml-1" />
             </Link>
