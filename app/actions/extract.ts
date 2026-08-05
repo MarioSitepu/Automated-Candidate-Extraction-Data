@@ -97,19 +97,41 @@ export async function runVideoToText(fileIdOrUrl: string) {
             continue;
           }
 
-          const fileStream = fsSync.createWriteStream(tempVideo);
-          // Stream reader for maximum download speed
-          const reader = (res.body as any).getReader();
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            fileStream.write(Buffer.from(value));
-          }
-          fileStream.end();
+          // Stream reader with Promise completion to ensure file is fully written before FFmpeg reads it
+          await new Promise<void>((resolve, reject) => {
+            const fileStream = fsSync.createWriteStream(tempVideo);
+            fileStream.on("finish", resolve);
+            fileStream.on("error", reject);
 
-          downloaded = true;
-          console.log("   -> GDrive video fast-download finished!");
-          break;
+            const reader = (res.body as any).getReader();
+            function pump() {
+              reader.read().then(({ done, value }: any) => {
+                if (done) {
+                  fileStream.end();
+                  return;
+                }
+                fileStream.write(Buffer.from(value), (err) => {
+                  if (err) {
+                    fileStream.destroy(err);
+                    reject(err);
+                  } else {
+                    pump();
+                  }
+                });
+              }).catch(reject);
+            }
+            pump();
+          });
+
+          // Check if downloaded file is non-empty
+          const stat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
+          if (stat.size > 1000) {
+            downloaded = true;
+            console.log(`   -> GDrive video fast-download finished! (Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
+            break;
+          } else {
+            console.log("   -> Downloaded file is too small or incomplete, trying next URL...");
+          }
         } catch (err: any) {
           console.error("Download strategy failed:", err?.message);
         }
@@ -127,16 +149,36 @@ export async function runVideoToText(fileIdOrUrl: string) {
           });
 
           if (res.ok && res.body) {
-            const fileStream = fsSync.createWriteStream(tempVideo);
-            const reader = (res.body as any).getReader();
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              fileStream.write(Buffer.from(value));
+            await new Promise<void>((resolve, reject) => {
+              const fileStream = fsSync.createWriteStream(tempVideo);
+              fileStream.on("finish", resolve);
+              fileStream.on("error", reject);
+
+              const reader = (res.body as any).getReader();
+              function pump() {
+                reader.read().then(({ done, value }: any) => {
+                  if (done) {
+                    fileStream.end();
+                    return;
+                  }
+                  fileStream.write(Buffer.from(value), (err) => {
+                    if (err) {
+                      fileStream.destroy(err);
+                      reject(err);
+                    } else {
+                      pump();
+                    }
+                  });
+                }).catch(reject);
+              }
+              pump();
+            });
+
+            const stat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
+            if (stat.size > 1000) {
+              downloaded = true;
+              console.log(`   -> GDrive API v3 download finished! (Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
             }
-            fileStream.end();
-            downloaded = true;
-            console.log("   -> GDrive API v3 download finished!");
           }
         } catch (err: any) {
           console.error("OAuth download failed:", err?.message);
