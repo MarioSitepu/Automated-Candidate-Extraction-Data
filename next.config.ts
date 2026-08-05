@@ -3,9 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
-      bodySizeLimit: '500mb',
+      bodySizeLimit: '1gb',
     },
-    middlewareClientMaxBodySize: '500mb',
+    proxyClientMaxBodySize: '1gb',
   },
 };
 
