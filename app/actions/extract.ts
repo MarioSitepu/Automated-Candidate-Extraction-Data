@@ -147,18 +147,48 @@ export async function runVideoToText(fileIdOrUrl: string) {
       for (const downloadUrl of candidateUrls) {
         try {
           console.log(`1. Fast-downloading GDrive stream: ${downloadUrl}`);
-          const res = await fetch(downloadUrl, {
+          let streamRes = await fetch(downloadUrl, {
             headers: {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             },
           });
 
-          if (!res.ok || !res.body) continue;
+          if (!streamRes.ok || !streamRes.body) continue;
 
-          const contentType = res.headers.get("content-type") || "";
+          let contentType = streamRes.headers.get("content-type") || "";
           if (contentType.includes("text/html")) {
-            console.log("   -> Warning HTML page returned, trying next URL...");
-            continue;
+            console.log("   -> HTML warning page returned by GDrive, parsing confirmation token...");
+            const htmlText = await streamRes.text();
+            const confirmMatch = htmlText.match(/confirm=([a-zA-Z0-9_-]+)/) || htmlText.match(/name="confirm" value="([a-zA-Z0-9_-]+)"/);
+            const uuidMatch = htmlText.match(/uuid=([a-zA-Z0-9_-]+)/);
+
+            const confirmToken = confirmMatch ? confirmMatch[1] : "t";
+            const uuidParam = uuidMatch ? `&uuid=${uuidMatch[1]}` : "";
+            
+            const confirmedUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=${confirmToken}${uuidParam}`;
+            console.log(`   -> Fetching confirmed stream URL: ${confirmedUrl}`);
+            const confirmedRes = await fetch(confirmedUrl, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              },
+            });
+
+            if (confirmedRes.ok && confirmedRes.body && !(confirmedRes.headers.get("content-type") || "").includes("text/html")) {
+              streamRes = confirmedRes;
+            } else {
+              const ucConfirmedUrl = `https://drive.google.com/uc?export=download&id=${cleanFileId}&confirm=${confirmToken}`;
+              const ucRes = await fetch(ucConfirmedUrl, {
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                },
+              });
+              if (ucRes.ok && ucRes.body && !(ucRes.headers.get("content-type") || "").includes("text/html")) {
+                streamRes = ucRes;
+              } else {
+                console.log("   -> Could not bypass HTML confirmation page for this candidate URL.");
+                continue;
+              }
+            }
           }
 
           await new Promise<void>((resolve, reject) => {
@@ -166,7 +196,7 @@ export async function runVideoToText(fileIdOrUrl: string) {
             fileStream.on("finish", resolve);
             fileStream.on("error", reject);
 
-            const reader = (res.body as any).getReader();
+            const reader = (streamRes.body as any).getReader();
             function pump() {
               reader.read().then(({ done, value }: any) => {
                 if (done) {
@@ -197,6 +227,7 @@ export async function runVideoToText(fileIdOrUrl: string) {
         }
       }
 
+      // Strategy 2: OAuth API v3 if ACCESS_TOKEN is present
       if (!downloaded && ACCESS_TOKEN && ACCESS_TOKEN.trim().length > 0) {
         try {
           console.log("1b. Trying GDrive API v3 with OAuth ACCESS_TOKEN...");
@@ -241,6 +272,31 @@ export async function runVideoToText(fileIdOrUrl: string) {
           }
         } catch (err: any) {
           console.error("OAuth download failed:", err?.message);
+        }
+      }
+
+      // Strategy 3: FFmpeg Direct Connection Fallback
+      if (!downloaded) {
+        try {
+          console.log("1c. Trying FFmpeg Direct Stream fallback...");
+          const ffmpegDirectUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`;
+          const args = [
+            "-rw_timeout", "15000000",
+            "-i", ffmpegDirectUrl,
+            "-vn",
+            "-c:a", "libmp3lame",
+            "-q:a", "2",
+            "-y",
+            tempAudio
+          ];
+          await execFileAsync("ffmpeg", args);
+          const stat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
+          if (stat.size > 1000) {
+            downloaded = true;
+            console.log("   -> FFmpeg direct stream successfully extracted audio!");
+          }
+        } catch (err: any) {
+          console.error("FFmpeg direct stream fallback failed:", err?.message);
         }
       }
 
