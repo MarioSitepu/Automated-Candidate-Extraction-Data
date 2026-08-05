@@ -217,4 +217,56 @@ export async function deleteCandidate(id: string) {
   }
 }
 
+export async function getDatabaseStorageStats() {
+  try {
+    const candidateCount = await prisma.candidate.count();
+    const userCount = await prisma.user.count();
+
+    let dbSizeBytes = 0;
+    try {
+      const result: any = await prisma.$queryRaw`SELECT pg_database_size(current_database()) as size;`;
+      if (result && result[0] && result[0].size) {
+        dbSizeBytes = Number(result[0].size);
+      }
+    } catch (e) {
+      // Fallback estimate if pg_database_size query is constrained
+      dbSizeBytes = (candidateCount * 150 + userCount * 10 + 500) * 1024;
+    }
+
+    const dbSizeMb = Number((dbSizeBytes / (1024 * 1024)).toFixed(2));
+    const maxCapacityMb = 500; // Supabase Free Tier Cap
+    const percentUsed = Number(((dbSizeMb / maxCapacityMb) * 100).toFixed(1));
+
+    let formattedSize = `${dbSizeMb} MB`;
+    if (dbSizeMb >= 1024) {
+      formattedSize = `${(dbSizeMb / 1024).toFixed(2)} GB`;
+    }
+
+    return {
+      success: true,
+      stats: {
+        dbSizeBytes,
+        dbSizeMb,
+        formattedSize,
+        percentUsed,
+        maxCapacityMb,
+        candidateCount,
+      },
+    };
+  } catch (error: any) {
+    console.error("Error fetching database storage stats:", error);
+    return {
+      success: false,
+      stats: {
+        dbSizeBytes: 0,
+        dbSizeMb: 0,
+        formattedSize: "0 MB",
+        percentUsed: 0,
+        maxCapacityMb: 500,
+        candidateCount: 0,
+      },
+    };
+  }
+}
+
 

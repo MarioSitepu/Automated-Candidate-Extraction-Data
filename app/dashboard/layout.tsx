@@ -1,10 +1,74 @@
 "use client";
 
 import Link from "next/link";
-import { LayoutDashboard, Users, LogOut, UploadCloud } from "lucide-react";
+import { LayoutDashboard, Users, LogOut, UploadCloud, HardDrive, Database, RefreshCw } from "lucide-react";
 import { logoutUser } from "../actions/auth";
+import { getDatabaseStorageStats } from "../actions/candidate";
 import { usePathname, useRouter } from "next/navigation";
 import { UploadProvider } from "../context/UploadContext";
+import { useEffect, useState } from "react";
+
+function SidebarStorageWidget() {
+  const [storage, setStorage] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadStorage = async () => {
+    setLoading(true);
+    const res = await getDatabaseStorageStats();
+    if (res.success && res.stats) {
+      setStorage(res.stats);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadStorage();
+  }, []);
+
+  const percent = storage?.percentUsed || 0;
+  const statusColor =
+    percent > 90 ? "bg-red-500 text-red-700 border-red-200" :
+    percent > 80 ? "bg-amber-500 text-amber-700 border-amber-200" : "bg-teal-600 text-teal-700 border-teal-200";
+
+  return (
+    <div className="mx-4 mb-3 p-3 bg-white rounded-xl border border-gray-100 shadow-sm space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <Database className="w-4 h-4 text-teal-700" />
+          <span className="text-xs font-bold text-gray-800">Supabase Storage</span>
+        </div>
+        <button 
+          onClick={loadStorage} 
+          title="Refresh Storage Status"
+          className="text-gray-400 hover:text-teal-700 transition-colors p-0.5"
+        >
+          <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin text-teal-600" : ""}`} />
+        </button>
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex justify-between items-center text-[11px] font-medium text-gray-600">
+          <span>{storage ? storage.formattedSize : "0 MB"}</span>
+          <span className="font-bold text-teal-800">{percent}%</span>
+        </div>
+
+        {/* Progress Bar */}
+        <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+          <div 
+            className={`h-1.5 rounded-full transition-all duration-500 ${
+              percent > 90 ? "bg-red-500" : percent > 80 ? "bg-amber-500" : "bg-teal-600"
+            }`}
+            style={{ width: `${Math.max(percent, 2)}%` }}
+          ></div>
+        </div>
+
+        <p className="text-[10px] text-gray-400 text-right">
+          Capacity: 500 MB Free Tier
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export default function DashboardLayout({
   children,
@@ -74,17 +138,20 @@ export default function DashboardLayout({
             </nav>
           </div>
 
-          {/* Bottom Section */}
-          <div className="p-4 border-t border-gray-200">
-            <form onSubmit={handleLogout}>
-              <button
-                type="submit"
-                className="flex items-center space-x-3 text-gray-600 hover:text-red-600 px-4 py-3 w-full text-left font-medium transition-colors cursor-pointer"
-              >
-                <LogOut className="w-5 h-5" />
-                <span>Logout</span>
-              </button>
-            </form>
+          {/* Bottom Section with Storage Widget */}
+          <div className="pt-2 border-t border-gray-200">
+            <SidebarStorageWidget />
+            <div className="px-4 pb-4">
+              <form onSubmit={handleLogout}>
+                <button
+                  type="submit"
+                  className="flex items-center space-x-3 text-gray-600 hover:text-red-600 px-4 py-2.5 w-full text-left font-medium transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-5 h-5" />
+                  <span>Logout</span>
+                </button>
+              </form>
+            </div>
           </div>
         </aside>
 
