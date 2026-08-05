@@ -4,7 +4,7 @@ import { execFile } from "child_process";
 import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
-import { createClient } from "@deepgram/sdk";
+import { DeepgramClient } from "@deepgram/sdk";
 import Groq from "groq-sdk";
 import util from "util";
 
@@ -54,10 +54,10 @@ async function transcribeAudioFile(audioPath: string) {
 
     if (DEEPGRAM_API_KEY && DEEPGRAM_API_KEY.trim().length > 0) {
         console.log("Transcribing audio via Deepgram API (Nova-3)...");
-        const deepgram = createClient(DEEPGRAM_API_KEY.trim());
+        const deepgram = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY.trim() });
         const audioBuffer = await fs.readFile(audioPath);
 
-        const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
+        const { result, error } = await (deepgram as any).listen.prerecorded.transcribeFile(
             audioBuffer,
             {
                 model: "nova-3",
