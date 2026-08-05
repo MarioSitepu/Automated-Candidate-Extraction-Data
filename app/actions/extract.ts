@@ -87,8 +87,17 @@ function resolveDirectStreamUrl(cleanFileId: string): Promise<string> {
 async function downloadGDriveParallel(directUrl: string, targetPath: string, concurrency = 8): Promise<boolean> {
   return new Promise((resolve) => {
     const client = directUrl.startsWith("https") ? https : http;
-    const req = client.request(directUrl, { method: "HEAD", headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
-      const totalBytes = parseInt(res.headers["content-length"] || "0", 10);
+    const req = client.get(directUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Range": "bytes=0-1024"
+      }
+    }, (res) => {
+      const contentRange = res.headers["content-range"] || "";
+      const match = contentRange.match(/\/(\d+)/);
+      let totalBytes = match && match[1] ? parseInt(match[1], 10) : parseInt(res.headers["content-length"] || "0", 10);
+      res.destroy();
+
       if (!totalBytes || totalBytes < 1000) {
         return resolve(false);
       }
@@ -148,7 +157,10 @@ async function downloadGDriveParallel(directUrl: string, targetPath: string, con
       resolve(false);
     });
 
-    req.end();
+    req.setTimeout(10000, () => {
+      req.destroy();
+      resolve(false);
+    });
   });
 }
 
