@@ -84,6 +84,7 @@ export async function runVideoToText(fileIdOrUrl: string) {
         try {
           console.log(`1. Trying GDrive stream: ${downloadUrl}`);
           const args = [
+            "-rw_timeout", "15000000", // 15 seconds max connection timeout to prevent hanging
             "-i", downloadUrl,
             "-vn",
             "-c:a", "libmp3lame",
@@ -107,6 +108,7 @@ export async function runVideoToText(fileIdOrUrl: string) {
           const gdriveApiUrl = `https://www.googleapis.com/drive/v3/files/${cleanFileId}?alt=media`;
           const authHeader = `Authorization: Bearer ${ACCESS_TOKEN.trim()}\r\n`;
           const args = [
+            "-rw_timeout", "15000000",
             "-headers", authHeader,
             "-i", gdriveApiUrl,
             "-vn",
