@@ -88,8 +88,6 @@ function downloadGDriveNative(cleanFileId: string, targetVideoPath: string): Pro
   });
 }
 
-const execFileAsync = util.promisify(execFile);
-
 // Helper to format seconds to HH:MM:SS,mmm
 function formatTime(seconds: number) {
     const totalSeconds = Math.floor(seconds);
