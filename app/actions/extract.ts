@@ -373,7 +373,7 @@ export async function extractGDriveFileId(input: string): Promise<string> {
     return "";
 }
 
-// Helper to transcribe audio EXCLUSIVELY via Deepgram Nova-3
+// Helper to transcribe audio EXCLUSIVELY via Deepgram Nova-3 (with Diarization)
 export async function transcribeAudioFile(audioPath: string) {
     const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
 
@@ -381,7 +381,7 @@ export async function transcribeAudioFile(audioPath: string) {
         throw new Error("Gagal Transkripsi: DEEPGRAM_API_KEY belum diset atau kosong di file .env");
     }
 
-    console.log("Transcribing audio EXCLUSIVELY via Deepgram API (Nova-3)...");
+    console.log("Transcribing audio EXCLUSIVELY via Deepgram API (Nova-3 + Diarization)...");
     const deepgram = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY.trim() });
 
     // 10-minute (600s) timeout for large interview audio files
@@ -393,6 +393,7 @@ export async function transcribeAudioFile(audioPath: string) {
             smart_format: true,
             utterances: true,
             punctuate: true,
+            diarize: true, // Diarization enabled for speaker identification
         }
     );
 
@@ -410,17 +411,19 @@ export async function transcribeAudioFile(audioPath: string) {
     let formattedSegments = utterances.length > 0
         ? utterances.map((u: any, index: number) => ({
             id: index + 1,
+            speaker: u.speaker !== undefined ? `Speaker ${u.speaker}` : undefined,
             startStr: formatTime(u.start),
             endStr: formatTime(u.end),
-            text: u.transcript.trim(),
+            text: u.speaker !== undefined ? `[Speaker ${u.speaker}]: ${u.transcript.trim()}` : u.transcript.trim(),
             rawStart: u.start
         }))
         : (response?.results?.channels?.[0]?.alternatives?.[0]?.paragraphs?.paragraphs || []).flatMap((p: any) =>
             p.sentences.map((s: any, index: number) => ({
                 id: index + 1,
+                speaker: s.speaker !== undefined ? `Speaker ${s.speaker}` : undefined,
                 startStr: formatTime(s.start),
                 endStr: formatTime(s.end),
-                text: s.text.trim(),
+                text: s.speaker !== undefined ? `[Speaker ${s.speaker}]: ${s.text.trim()}` : s.text.trim(),
                 rawStart: s.start
             }))
         );
