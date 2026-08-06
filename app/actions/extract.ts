@@ -72,6 +72,8 @@ function findFFmpegDir(): string | null {
 function resolveDirectStreamUrl(cleanFileId: string): Promise<ResolvedStream> {
   return new Promise((resolve) => {
     const candidateUrls = [
+      `https://lh3.googleusercontent.com/d/${cleanFileId}`,
+      `https://drive.google.com/thumbnail?id=${cleanFileId}&sz=w10000`,
       `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`,
       `https://drive.google.com/uc?export=download&id=${cleanFileId}&confirm=t`,
       `https://drive.google.com/uc?id=${cleanFileId}&export=download`,
