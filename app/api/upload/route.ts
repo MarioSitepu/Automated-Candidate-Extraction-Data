@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
   const timestamp = Date.now();
   const rawFileName = request.headers.get("x-file-name");
-  const fileName = rawFileName ? decodeURIComponent(rawFileName) : `audio_${timestamp}.mp3`;
+  const fileName = rawFileName ? decodeURIComponent(rawFileName) : `upload_${timestamp}.mp4`;
   const ext = path.extname(fileName).toLowerCase() || ".mp4";
 
   const inputFilePath = path.join(process.cwd(), `tmp_upload_${timestamp}${ext}`);
@@ -40,6 +40,8 @@ export async function POST(request: Request) {
     await fs.writeFile(inputFilePath, buffer);
 
     const stat = await fs.stat(inputFilePath).catch(() => ({ size: 0 }));
+    console.log(`1. Compressing & Converting video file to MP3 audio via FFmpeg (File Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)...`);
+
     if (stat.size < 100) {
       return NextResponse.json(
         { success: false, message: "File video/audio yang diunggah kosong atau rusak." },
@@ -47,74 +49,48 @@ export async function POST(request: Request) {
       );
     }
 
-    const isAudioOnly = ext === ".mp3" || ext === ".wav" || ext === ".m4a" || ext === ".aac" || ext === ".ogg" || ext === ".flac";
-    let fileToTranscribe = outputAudio;
-    let ffmpegSuccess = false;
-
-    if (isAudioOnly) {
-      console.log(`1. Processing Audio File (${(stat.size / (1024 * 1024)).toFixed(2)} MB)...`);
-      try {
-        await runFFmpeg([
-          "-i", inputFilePath,
-          "-vn",
-          "-c:a", "libmp3lame",
-          "-q:a", "2",
-          "-y",
-          outputAudio
-        ]);
-        ffmpegSuccess = true;
-      } catch (audioErr) {
-        console.warn("   -> Audio re-encode skipped, passing raw audio to Deepgram...");
-        fileToTranscribe = inputFilePath;
-      }
-    } else {
-      console.log(`1. Processing MP4 Video File (${(stat.size / (1024 * 1024)).toFixed(2)} MB)...`);
-      try {
-        await runFFmpeg([
-          "-probesize", "50M",
-          "-analyzeduration", "50M",
-          "-err_detect", "ignore_err",
-          "-i", inputFilePath,
-          "-vn",
-          "-c:a", "libmp3lame",
-          "-q:a", "2",
-          "-y",
-          outputAudio
-        ]);
-        ffmpegSuccess = true;
-      } catch (videoErr: any) {
-        console.warn("   -> FFmpeg MP4 audio extraction skipped (moov atom warning). Passing MP4 video file directly to Deepgram Nova-3...");
-        fileToTranscribe = inputFilePath;
-      }
+    // 2. FFmpeg Video to MP3 Audio Conversion
+    try {
+      await runFFmpeg([
+        "-i", inputFilePath,
+        "-vn",
+        "-ac", "2",
+        "-ar", "44100",
+        "-c:a", "libmp3lame",
+        "-q:a", "2",
+        "-y",
+        outputAudio
+      ]);
+    } catch (err1: any) {
+      console.warn("   -> First pass FFmpeg failed, running robust pass with err_detect ignore...");
+      await runFFmpeg([
+        "-err_detect", "ignore_err",
+        "-i", inputFilePath,
+        "-vn",
+        "-ac", "2",
+        "-ar", "44100",
+        "-y",
+        outputAudio
+      ]);
     }
 
-    // Check extracted MP3 file size if FFmpeg ran
-    if (ffmpegSuccess) {
-      const audioStat = await fs.stat(outputAudio).catch(() => ({ size: 0 }));
-      if (audioStat.size > 1000) {
-        fileToTranscribe = outputAudio;
-      } else {
-        fileToTranscribe = inputFilePath;
-      }
+    const audioStat = await fs.stat(outputAudio).catch(() => ({ size: 0 }));
+    if (audioStat.size < 500) {
+      throw new Error("Gagal mengonversi video ke MP3 audio via FFmpeg. File video mungkin rusak.");
     }
 
-    // 2. Transcribe via Deepgram Nova-3 (Supports MP3, MP4, WAV, M4A, MOV natively!)
-    const formattedSegments = await transcribeAudioFile(fileToTranscribe);
+    console.log(`   -> Audio MP3 successfully created! (Audio Size: ${(audioStat.size / (1024 * 1024)).toFixed(2)} MB)`);
 
-    // 3. Save final audio/video file for playback in dashboard
+    // 3. Transcribe clean extracted MP3 via Deepgram Nova-3 + Diarization
+    const formattedSegments = await transcribeAudioFile(outputAudio);
+
+    // 4. Save clean audio file for playback in dashboard
     const uploadsDir = path.join(process.cwd(), "public", "uploads");
     await fs.mkdir(uploadsDir, { recursive: true });
 
-    let publicAudioUrl = "";
-    if (fsSync.existsSync(outputAudio) && fsSync.statSync(outputAudio).size > 1000) {
-      const finalAudioPath = path.join(uploadsDir, `audio_${timestamp}.mp3`);
-      await fs.copyFile(outputAudio, finalAudioPath).catch(() => {});
-      publicAudioUrl = `/uploads/audio_${timestamp}.mp3`;
-    } else {
-      const finalAudioPath = path.join(uploadsDir, `audio_${timestamp}${ext}`);
-      await fs.copyFile(inputFilePath, finalAudioPath).catch(() => {});
-      publicAudioUrl = `/uploads/audio_${timestamp}${ext}`;
-    }
+    const finalAudioPath = path.join(uploadsDir, `audio_${timestamp}.mp3`);
+    await fs.copyFile(outputAudio, finalAudioPath).catch(() => {});
+    const publicAudioUrl = `/uploads/audio_${timestamp}.mp3`;
 
     // Clean up temporary files
     await fs.unlink(inputFilePath).catch(() => {});
