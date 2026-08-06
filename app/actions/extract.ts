@@ -72,9 +72,7 @@ function findFFmpegDir(): string | null {
 function resolveDirectStreamUrl(cleanFileId: string): Promise<ResolvedStream> {
   return new Promise((resolve) => {
     const candidateUrls = [
-      `https://lh3.googleusercontent.com/d/${cleanFileId}`,
-      `https://drive.google.com/thumbnail?id=${cleanFileId}&sz=w10000`,
-      `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`,
+      `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t&export=download`,
       `https://drive.google.com/uc?export=download&id=${cleanFileId}&confirm=t`,
       `https://drive.google.com/uc?id=${cleanFileId}&export=download`,
     ];
@@ -121,7 +119,12 @@ function resolveDirectStreamUrl(cleanFileId: string): Promise<ResolvedStream> {
           return checkUrl(redirectUrl, count + 1);
         }
 
-        const contentType = res.headers["content-type"] || "";
+        const contentType = (res.headers["content-type"] || "").toLowerCase();
+
+        // Skip JPEG/PNG thumbnail images
+        if (contentType.startsWith("image/")) {
+          return tryNextCandidate();
+        }
         if (contentType.includes("text/html")) {
           let html = "";
           res.on("data", chunk => html += chunk.toString());
