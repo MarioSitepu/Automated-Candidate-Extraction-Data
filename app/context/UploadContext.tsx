@@ -145,7 +145,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
           ? {
               ...prev,
               status: "extracting",
-              progressText: "Mengekstrak data psikososial dengan LLaMA 3...",
+              progressText: "Mengekstrak data kandidat dari transkrip...",
             }
           : null
       );
