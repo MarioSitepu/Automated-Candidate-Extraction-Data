@@ -115,10 +115,21 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
     });
 
     try {
-      // Step 1: Compress & Transcribe via Whisper
+      // Step 1: Compress & Transcribe via Whisper Stream Route
       const formData = new FormData();
       formData.append("file", file);
-      const extractRes = await uploadAndExtract(formData);
+
+      const apiRes = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!apiRes.ok) {
+        const errJson = await apiRes.json().catch(() => ({}));
+        throw new Error(errJson.message || `Gagal mengunggah file ke server (Status HTTP ${apiRes.status}).`);
+      }
+
+      const extractRes = await apiRes.json();
 
       if (!extractRes.success) {
         throw new Error(extractRes.message || "Gagal mentranskripsi file audio.");
