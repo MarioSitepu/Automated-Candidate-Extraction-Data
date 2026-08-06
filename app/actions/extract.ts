@@ -373,82 +373,74 @@ export async function extractGDriveFileId(input: string): Promise<string> {
     return "";
 }
 
-// Helper to transcribe audio using Deepgram Nova-3 or Groq Whisper fallback
+// Helper to transcribe audio EXCLUSIVELY via Deepgram Nova-3
 export async function transcribeAudioFile(audioPath: string) {
     const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
-    const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
-    if (DEEPGRAM_API_KEY && DEEPGRAM_API_KEY.trim().length > 0) {
-        try {
-            console.log("Transcribing audio via Deepgram API (Nova-3)...");
-            const deepgram = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY.trim() });
+    if (!DEEPGRAM_API_KEY || DEEPGRAM_API_KEY.trim().length === 0) {
+        throw new Error("Gagal Transkripsi: DEEPGRAM_API_KEY belum diset atau kosong di file .env");
+    }
 
-            // 45-second timeout race for Deepgram API request
-            const deepgramPromise = deepgram.listen.v1.media.transcribeFile(
-                fsSync.createReadStream(audioPath),
-                {
-                    model: "nova-3",
-                    language: "id",
-                    smart_format: true,
-                    utterances: true,
-                }
-            );
+    console.log("Transcribing audio EXCLUSIVELY via Deepgram API (Nova-3)...");
+    const deepgram = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY.trim() });
 
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error("Deepgram API request timed out after 45s")), 45000)
-            );
+    // 10-minute (600s) timeout for large interview audio files
+    const deepgramPromise = deepgram.listen.v1.media.transcribeFile(
+        fsSync.createReadStream(audioPath),
+        {
+            model: "nova-3",
+            language: "id",
+            smart_format: true,
+            utterances: true,
+            punctuate: true,
+        }
+    );
 
-            const response = await Promise.race([deepgramPromise, timeoutPromise]) as any;
+    const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Deepgram API request timed out (lebih dari 10 menit)")), 600000)
+    );
 
-            const utterances = response?.results?.utterances || [];
-            const formattedSegments = utterances.length > 0
-                ? utterances.map((u: any, index: number) => ({
-                    id: index + 1,
-                    startStr: formatTime(u.start),
-                    endStr: formatTime(u.end),
-                    text: u.transcript.trim(),
-                    rawStart: u.start
-                }))
-                : (response?.results?.channels[0]?.alternatives[0]?.paragraphs?.paragraphs || []).flatMap((p: any) =>
-                    p.sentences.map((s: any, index: number) => ({
-                        id: index + 1,
-                        startStr: formatTime(s.start),
-                        endStr: formatTime(s.end),
-                        text: s.text.trim(),
-                        rawStart: s.start
-                    }))
-                );
+    const response = await Promise.race([deepgramPromise, timeoutPromise]) as any;
 
-            if (formattedSegments.length > 0) {
-                return formattedSegments;
-            }
-        } catch (err: any) {
-            console.warn("   -> Deepgram STT failed or timed out:", err?.message || err);
-            console.log("   -> Falling back to Groq Whisper STT (whisper-large-v3)...");
+    if (response?.error) {
+        throw new Error(`Deepgram STT Error: ${response.error?.message || response.error}`);
+    }
+
+    const utterances = response?.results?.utterances || [];
+    let formattedSegments = utterances.length > 0
+        ? utterances.map((u: any, index: number) => ({
+            id: index + 1,
+            startStr: formatTime(u.start),
+            endStr: formatTime(u.end),
+            text: u.transcript.trim(),
+            rawStart: u.start
+        }))
+        : (response?.results?.channels?.[0]?.alternatives?.[0]?.paragraphs?.paragraphs || []).flatMap((p: any) =>
+            p.sentences.map((s: any, index: number) => ({
+                id: index + 1,
+                startStr: formatTime(s.start),
+                endStr: formatTime(s.end),
+                text: s.text.trim(),
+                rawStart: s.start
+            }))
+        );
+
+    if (!formattedSegments || formattedSegments.length === 0) {
+        const rawTranscript = response?.results?.channels?.[0]?.alternatives?.[0]?.transcript || "";
+        if (rawTranscript.trim()) {
+            formattedSegments = [{
+                id: 1,
+                startStr: "00:00",
+                endStr: "00:00",
+                text: rawTranscript.trim(),
+                rawStart: 0
+            }];
+        } else {
+            throw new Error("Deepgram tidak menemukan suara/percakapan pada file audio ini.");
         }
     }
 
-    if (!GROQ_API_KEY) {
-        throw new Error("Gagal transkripsi: DEEPGRAM_API_KEY error dan GROQ_API_KEY belum diset di file .env");
-    }
-
-    console.log("Transcribing audio via Groq Whisper API (whisper-large-v3)...");
-    const groq = new Groq({ apiKey: GROQ_API_KEY.trim() });
-    const transcription = await groq.audio.transcriptions.create({
-        file: fsSync.createReadStream(audioPath),
-        model: "whisper-large-v3",
-        language: "id",
-        response_format: "verbose_json"
-    });
-
-    const segments = (transcription as any).segments || [];
-    return segments.map((segment: any, index: number) => ({
-        id: index + 1,
-        startStr: formatTime(segment.start),
-        endStr: formatTime(segment.end),
-        text: segment.text.trim(),
-        rawStart: segment.start
-    }));
+    return formattedSegments;
 }
 
 export async function runVideoToText(fileIdOrUrl: string) {
