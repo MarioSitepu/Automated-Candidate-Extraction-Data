@@ -373,8 +373,8 @@ export async function extractGDriveFileId(input: string): Promise<string> {
     return "";
 }
 
-// Helper to transcribe audio using Deepgram Nova-3 or Groq Whisper fallback
-export async function transcribeAudioFile(audioPath: string) {
+  // Helper to transcribe audio using Deepgram Nova-3 or Groq Whisper fallback
+  export async function transcribeAudioFile(audioPath: string) {
     const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
     const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
@@ -391,6 +391,7 @@ export async function transcribeAudioFile(audioPath: string) {
                     language: "id",
                     smart_format: true,
                     utterances: true,
+                    diarize: true, // <-- FITUR DIARIZATION DIAKTIFKAN
                 }
             );
 
@@ -404,17 +405,19 @@ export async function transcribeAudioFile(audioPath: string) {
             const formattedSegments = utterances.length > 0
                 ? utterances.map((u: any, index: number) => ({
                     id: index + 1,
+                    speaker: u.speaker !== undefined ? `Speaker ${u.speaker}` : undefined,
                     startStr: formatTime(u.start),
                     endStr: formatTime(u.end),
-                    text: u.transcript.trim(),
+                    text: u.speaker !== undefined ? `[Speaker ${u.speaker}]: ${u.transcript.trim()}` : u.transcript.trim(),
                     rawStart: u.start
                 }))
                 : (response?.results?.channels[0]?.alternatives[0]?.paragraphs?.paragraphs || []).flatMap((p: any) =>
                     p.sentences.map((s: any, index: number) => ({
                         id: index + 1,
+                        speaker: s.speaker !== undefined ? `Speaker ${s.speaker}` : undefined,
                         startStr: formatTime(s.start),
                         endStr: formatTime(s.end),
-                        text: s.text.trim(),
+                        text: s.speaker !== undefined ? `[Speaker ${s.speaker}]: ${s.text.trim()}` : s.text.trim(),
                         rawStart: s.start
                     }))
                 );
