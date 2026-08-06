@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
-import { pipeline } from "stream/promises";
-import { Readable } from "stream";
 import { runFFmpeg, transcribeAudioFile } from "@/app/actions/extract";
 
 export const maxDuration = 300; // 5 minutes max
@@ -29,51 +27,73 @@ export async function POST(request: Request) {
   const outputAudio = path.join(process.cwd(), `audio_${timestamp}.mp3`);
 
   try {
-    // 1. Stream raw binary request body directly to disk using pipeline to ensure 100% complete write
-    if (request.body) {
-      const nodeStream = Readable.fromWeb(request.body as any);
-      const writeStream = fsSync.createWriteStream(inputFilePath);
-      await pipeline(nodeStream, writeStream);
-    } else {
-      const arrayBuffer = await request.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      await fs.writeFile(inputFilePath, buffer);
-    }
-
-    const stat = await fs.stat(inputFilePath).catch(() => ({ size: 0 }));
-    if (stat.size === 0) {
+    // 1. Read full binary payload via request.arrayBuffer() (ensures 100% full file write in Next.js Turbopack)
+    const arrayBuffer = await request.arrayBuffer();
+    if (!arrayBuffer || arrayBuffer.byteLength === 0) {
       return NextResponse.json(
         { success: false, message: "Payload file audio/video kosong." },
         { status: 400 }
       );
     }
 
+    const buffer = Buffer.from(arrayBuffer);
+    await fs.writeFile(inputFilePath, buffer);
+
+    const stat = await fs.stat(inputFilePath).catch(() => ({ size: 0 }));
     console.log(`1. Compressing and extracting audio via FFmpeg (File Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)...`);
 
-    // Robust FFmpeg arguments for MP4/MOV/WebM video files with moov atom tolerance & probe size
-    const args = [
-      "-probesize", "100M",
-      "-analyzeduration", "100M",
-      "-err_detect", "ignore_err",
-      "-i", inputFilePath,
-      "-vn",
-      "-c:a", "libmp3lame",
-      "-q:a", "2",
-      "-y",
-      outputAudio
-    ];
+    if (stat.size < 1000) {
+      return NextResponse.json(
+        { success: false, message: "File video/audio yang diunggah tidak lengkap atau terpotong." },
+        { status: 400 }
+      );
+    }
 
-    await runFFmpeg(args);
-    console.log("   -> Audio successfully extracted!");
+    // 2. FFmpeg Extraction with fallback for non-standard video headers
+    try {
+      await runFFmpeg([
+        "-probesize", "100M",
+        "-analyzeduration", "100M",
+        "-err_detect", "ignore_err",
+        "-i", inputFilePath,
+        "-vn",
+        "-c:a", "libmp3lame",
+        "-q:a", "2",
+        "-y",
+        outputAudio
+      ]);
+    } catch (ffmpegErr: any) {
+      console.warn("   -> First FFmpeg pass failed, running fallback audio stream extractor...");
+      await runFFmpeg([
+        "-ignore_unknown",
+        "-probesize", "50M",
+        "-i", inputFilePath,
+        "-vn",
+        "-ac", "2",
+        "-ar", "44100",
+        "-y",
+        outputAudio
+      ]);
+    }
 
+    const audioStat = await fs.stat(outputAudio).catch(() => ({ size: 0 }));
+    if (audioStat.size === 0) {
+      throw new Error("Gagal mengolah trek audio dari file video ini.");
+    }
+
+    console.log(`   -> Audio successfully extracted! (${(audioStat.size / (1024 * 1024)).toFixed(2)} MB)`);
+
+    // 3. Transcribe via Deepgram Nova-3 + Diarization
     const formattedSegments = await transcribeAudioFile(outputAudio);
 
+    // Save final audio to public uploads directory for playback
     const uploadsDir = path.join(process.cwd(), "public", "uploads");
     await fs.mkdir(uploadsDir, { recursive: true });
     const finalAudioPath = path.join(uploadsDir, `audio_${timestamp}.mp3`);
     await fs.copyFile(outputAudio, finalAudioPath).catch(() => {});
     const publicAudioUrl = `/uploads/audio_${timestamp}.mp3`;
 
+    // Clean up temporary files
     await fs.unlink(inputFilePath).catch(() => {});
     await fs.unlink(outputAudio).catch(() => {});
 
