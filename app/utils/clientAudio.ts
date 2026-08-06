@@ -1,11 +1,11 @@
 /**
- * Fast client-side audio compressor using Web Audio API.
- * Converts heavy video/audio files (e.g. 400 MB MP4) into a lightweight 16kHz WAV audio blob (~1-4 MB)
+ * Fast client-side audio compressor using Web Audio API & HTML5 Audio element fallback.
+ * Converts heavy video/audio files (e.g. 16.7 MB .mpeg or 400 MB MP4) into a lightweight 16kHz WAV audio blob (~1-3 MB)
  * directly inside the user's browser in seconds to bypass Vercel serverless payload limits.
  */
 export async function compressAudioInBrowser(file: File, onProgress?: (msg: string) => void): Promise<File> {
-  // If file is already small audio (< 4 MB WAV/MP3), return directly
-  if (file.size <= 4 * 1024 * 1024 && file.type.startsWith("audio/")) {
+  // If file is already small (< 4 MB), return directly
+  if (file.size <= 4 * 1024 * 1024) {
     return file;
   }
 
@@ -13,23 +13,47 @@ export async function compressAudioInBrowser(file: File, onProgress?: (msg: stri
     onProgress(`Mengompres file ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB) di browser...`);
   }
 
-  return new Promise((resolve) => {
+  // Pass 1: Try Web Audio API decodeAudioData
+  try {
+    const compressed = await decodeAndReencodeWav(file);
+    if (compressed && compressed.size > 1000) {
+      console.log(`Browser Web Audio compressed ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB) -> ${(compressed.size / (1024 * 1024)).toFixed(2)} MB`);
+      return compressed;
+    }
+  } catch (e) {
+    console.warn("Primary Web Audio decode failed, trying HTML5 Audio Element decoder...", e);
+  }
+
+  // Pass 2: Fallback via HTML5 Audio element & MediaRecorder
+  try {
+    const html5Compressed = await decodeViaAudioElement(file);
+    if (html5Compressed && html5Compressed.size > 1000) {
+      console.log(`HTML5 Audio compressed ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB) -> ${(html5Compressed.size / (1024 * 1024)).toFixed(2)} MB`);
+      return html5Compressed;
+    }
+  } catch (e2) {
+    console.warn("HTML5 Audio decode skipped:", e2);
+  }
+
+  return file;
+}
+
+function decodeAndReencodeWav(file: File): Promise<File> {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
         const arrayBuffer = e.target?.result as ArrayBuffer;
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        if (!AudioCtx) {
-          return resolve(file);
-        }
+        if (!AudioCtx) return reject("No AudioContext");
+
         const audioCtx = new AudioCtx();
-        
-        // Decode audio track from video/audio buffer
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
         
         // Downsample to 16kHz mono for Deepgram Nova-3 AI
         const targetSampleRate = 16000;
-        const offlineCtx = new OfflineAudioContext(1, Math.min(audioBuffer.duration * targetSampleRate, targetSampleRate * 3600), targetSampleRate);
+        const maxSamples = targetSampleRate * 7200; // max 2 hours
+        const offlineCtx = new OfflineAudioContext(1, Math.min(audioBuffer.duration * targetSampleRate, maxSamples), targetSampleRate);
         
         const source = offlineCtx.createBufferSource();
         source.buffer = audioBuffer;
@@ -39,22 +63,63 @@ export async function compressAudioInBrowser(file: File, onProgress?: (msg: stri
         const renderedBuffer = await offlineCtx.startRendering();
         await audioCtx.close().catch(() => {});
         
-        // Encode rendered PCM buffer to lightweight WAV file
         const wavBlob = audioBufferToWav(renderedBuffer);
         const cleanName = file.name.replace(/\.[^/.]+$/, "") + "_compressed.wav";
-        const compressedFile = new File([wavBlob], cleanName, {
-          type: "audio/wav"
-        });
-        
-        console.log(`Browser compressed ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB) -> ${(compressedFile.size / (1024 * 1024)).toFixed(2)} MB`);
-        resolve(compressedFile);
+        resolve(new File([wavBlob], cleanName, { type: "audio/wav" }));
       } catch (err) {
-        console.warn("Browser audio extraction skipped, proceeding with original file:", err);
-        resolve(file);
+        reject(err);
       }
     };
-    reader.onerror = () => resolve(file);
+    reader.onerror = (err) => reject(err);
     reader.readAsArrayBuffer(file);
+  });
+}
+
+function decodeViaAudioElement(file: File): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const audio = new Audio();
+    audio.src = url;
+    
+    audio.oncanplaythrough = async () => {
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        const ctx = new AudioCtx();
+        const dest = ctx.createMediaStreamDestination();
+        const source = ctx.createMediaElementSource(audio);
+        source.connect(dest);
+
+        const mediaRecorder = new MediaRecorder(dest.stream);
+        const chunks: Blob[] = [];
+
+        mediaRecorder.ondataavailable = (ev) => {
+          if (ev.data.size > 0) chunks.push(ev.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          URL.revokeObjectURL(url);
+          ctx.close().catch(() => {});
+          const blob = new Blob(chunks, { type: "audio/webm" });
+          const cleanName = file.name.replace(/\.[^/.]+$/, "") + "_compressed.webm";
+          resolve(new File([blob], cleanName, { type: "audio/webm" }));
+        };
+
+        mediaRecorder.start();
+        audio.play().catch(reject);
+
+        audio.onended = () => {
+          mediaRecorder.stop();
+        };
+      } catch (err) {
+        URL.revokeObjectURL(url);
+        reject(err);
+      }
+    };
+
+    audio.onerror = (err) => {
+      URL.revokeObjectURL(url);
+      reject(err);
+    };
   });
 }
 
