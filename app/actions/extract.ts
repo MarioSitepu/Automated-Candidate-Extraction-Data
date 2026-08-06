@@ -11,7 +11,7 @@ import Groq from "groq-sdk";
 import util from "util";
 
 // Non-blocking FFmpeg process execution (Fixes Windows OS pipe buffer deadlocks)
-export function runFFmpeg(args: string[]): Promise<void> {
+export async function runFFmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const ff = spawn("ffmpeg", args);
     let stderrText = "";
