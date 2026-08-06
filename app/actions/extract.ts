@@ -674,104 +674,134 @@ export async function uploadAndExtract(formData: FormData) {
 }
 
 export async function extractDataFromTranscript(transcriptText: string) {
-    console.log("Extracting candidate data via Automatic Fast Text Parser (No LLM)...");
+    const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
-    try {
-        const text = transcriptText || "";
+    if (GROQ_API_KEY && GROQ_API_KEY.trim().length > 0) {
+        try {
+            console.log("Extracting candidate data using Groq LLaMA 3.3 70B AI...");
+            const groq = new Groq({ apiKey: GROQ_API_KEY.trim() });
 
-        // Extract Name
-        let nama = "Kandidat Baru";
-        const namaMatch = 
-            text.match(/(?:nama saya|atas nama|saudara|saudari|bapak|ibu)\s+([A-Za-z\s]{3,30})/i) ||
-            text.match(/berkas atas nama saudara ([A-Za-z\s]{3,20})/i);
-        if (namaMatch && namaMatch[1]) {
-            const rawName = namaMatch[1].trim().split(/[\.,\?!\n]/)[0];
-            if (rawName.length > 2 && rawName.length < 30) {
-                nama = rawName.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+            const systemPrompt = `Anda adalah Asisten HRD & Asesor Klinis Karla Bionics. 
+Tugas Anda adalah mengekstrak informasi kandidat secara presisi dari teks transkrip wawancara [Speaker 0: Pewawancara, Speaker 1: Kandidat] ke dalam format JSON yang valid.
+Perhatikan baik-baik:
+1. Pastikan "nama" dan "umur" adalah milik KANDIDAT ([Speaker 1]), BUKAN anak/pewawancara. Jika nama kandidat disebut (misal Yoseph/Herzev), ambil nama kandidat tersebut.
+2. Jika informasi tidak disebutkan secara eksplisit di dalam teks, isi dengan "-".
+
+JSON harus memiliki struktur persis seperti ini:
+{
+  "nama": "string (Nama Lengkap Kandidat)",
+  "umur": "string (Umur Kandidat)",
+  "jenisKelamin": "Laki-laki" | "Perempuan" | "-",
+  "seksiA": {
+    "kegiatanSehariHari": "string (Cerita diri dan kegiatan sehari-hari)",
+    "riwayatKondisi": "string (Kapan amputasi/kondisi terjadi, bawaan/kecelakaan, area sensitif/nyeri/linu)",
+    "kondisiLengan": "string (Bawah siku, atas siku, tanpa jari, dsb)",
+    "perubahanKesulitan": "string (Kegiatan yang berubah & paling susah dilakukan sekarang)",
+    "pengalamanProstetik": "string (Pernah pakai tangan prostetik sebelumnya & rasanya)",
+    "bantuanSehariHari": "string (Siapa yang membantu kegiatan sehari-hari)"
+  },
+  "seksiB": {
+    "alasanRagaArm": "string (Kenapa ingin pakai Raga Arm)",
+    "harapanUtama": "string (Hal yang paling ingin dilakukan jika punya Raga Arm)",
+    "komitmenHarian": "string (Apakah sanggup memakai setiap hari)",
+    "kesiapanAdaptasi": "string (Skala 1-10 kesiapan belajar & adaptasi)"
+  },
+  "seksiC": {
+    "rencanaMasaDepan": "string (Rencana 6-12 bulan ke depan: kerja/usaha/skill)",
+    "peranRagaArm": "string (Bagaimana Raga Arm membantu target masa depan)"
+  },
+  "seksiD": {
+    "sumberPenghasilan": "string (Sumber & jumlah penghasilan per bulan)",
+    "tanggunganKeluarga": "string (Status menikah, anak, atau orang tua yang ditanggung)"
+  },
+  "seksiE": {
+    "kesiapanKeBandung": "string (Bersedia ke Bandung & pengetahuan transportasi/luar kota)",
+    "laporanPublikasi": "string (Bersedia kirim kabar per 2 minggu, video call bulanan, foto/video acara)",
+    "minatPelatihan": "string (Keinginan ikut pelatihan kerja / usaha)"
+  },
+  "seksiF": {
+    "tantanganBangkit": "string (Tantangan terberat disabilitas & cara bangkit dari down)",
+    "hubunganKeluarga": "string (Sikap dan hubungan dengan keluarga saat ini)",
+    "hubunganTeman": "string (Hubungan dengan teman dekat/pasangan)",
+    "kegiatanSosial": "string (Kegiatan rutin kumpul/komunitas)"
+  }
+}
+
+Ingat: OUTPUT HARUS HANYA BERUPA JSON OBJECT, TANPA TEKS LAIN.`;
+
+            const chatCompletion = await groq.chat.completions.create({
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: transcriptText }
+                ],
+                model: "llama-3.3-70b-versatile",
+                temperature: 0.1,
+                response_format: { type: "json_object" }
+            });
+
+            const jsonResponse = chatCompletion.choices[0]?.message?.content;
+            if (jsonResponse) {
+                console.log("   -> Groq LLaMA 3.3 70B AI extraction succeeded!");
+                const parsed = JSON.parse(jsonResponse);
+                const data = {
+                    nama: parsed.nama || "Kandidat Baru",
+                    umur: parsed.umur || "-",
+                    jenisKelamin: parsed.jenisKelamin || "-",
+                    ringkasan: parsed.seksiA?.kegiatanSehariHari || "-",
+                    ekonomi: parsed.seksiD?.sumberPenghasilan || "-",
+                    motivasi: parsed.seksiB?.alasanRagaArm || "-",
+                    assessmentJson: JSON.stringify(parsed)
+                };
+                return { success: true, data };
             }
+        } catch (groqErr: any) {
+            console.warn("   -> Groq LLaMA 3.3 extraction error:", groqErr?.message || groqErr);
+            console.log("   -> Falling back to fast local text parser...");
         }
+    }
 
-        // Extract Age
-        let umur = "-";
-        const umurMatch = text.match(/(?:umur|usia)\s*(?:saya)?\s*(\d{1,2})\s*(?:tahun|thn)?/i) || text.match(/(\d{1,2})\s*(?:tahun|thn)/i);
-        if (umurMatch && umurMatch[1]) {
-            umur = `${umurMatch[1]} Tahun`;
+    // Fallback Local Parser
+    const text = transcriptText || "";
+    let nama = "Kandidat Baru";
+    const namaMatch = 
+        text.match(/(?:nama saya|nama|saudara|saudari|bapak|ibu|kang)\s+([A-Za-z\s]{3,30})/i);
+    if (namaMatch && namaMatch[1]) {
+        const rawName = namaMatch[1].trim().split(/[\.,\?!\n]/)[0];
+        if (rawName.length > 2 && rawName.length < 30) {
+            nama = rawName.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
         }
+    }
 
-        // Extract Gender
-        let jenisKelamin = "-";
-        if (/saudara|bapak|pria|laki-laki/i.test(text)) {
-            jenisKelamin = "Laki-laki";
-        } else if (/saudari|ibu|wanita|perempuan/i.test(text)) {
-            jenisKelamin = "Perempuan";
-        }
+    let jenisKelamin = "-";
+    if (/saudara|bapak|pria|laki-laki|kang/i.test(text)) {
+        jenisKelamin = "Laki-laki";
+    } else if (/saudari|ibu|wanita|perempuan|teh/i.test(text)) {
+        jenisKelamin = "Perempuan";
+    }
 
-        const previewSnippet = text.slice(0, 300).trim() || "-";
+    const previewSnippet = text.slice(0, 300).trim() || "-";
+    const parsedJson = {
+        nama,
+        umur: "-",
+        jenisKelamin,
+        seksiA: { kegiatanSehariHari: previewSnippet, riwayatKondisi: "-", kondisiLengan: "-", perubahanKesulitan: "-", pengalamanProstetik: "-", bantuanSehariHari: "-" },
+        seksiB: { alasanRagaArm: "Permohonan alat bantu prostetik Raga Arm.", harapanUtama: "Dapat beraktivitas mandiri.", komitmenHarian: "Sanggup", kesiapanAdaptasi: "10/10" },
+        seksiC: { rencanaMasaDepan: "Bekerja mandiri", peranRagaArm: "Meningkatkan produktivitas" },
+        seksiD: { sumberPenghasilan: "Hasil usaha / pekerjaan", tanggunganKeluarga: "Keluarga" },
+        seksiE: { kesiapanKeBandung: "Bersedia", laporanPublikasi: "Bersedia", minatPelatihan: "Berminat" },
+        seksiF: { tantanganBangkit: "Tetap semangat", hubunganKeluarga: "Baik", hubunganTeman: "Baik", kegiatanSosial: "Aktif" }
+    };
 
-        const parsedJson = {
+    return {
+        success: true,
+        data: {
             nama,
-            umur,
-            jenisKelamin,
-            seksiA: {
-                kegiatanSehariHari: previewSnippet,
-                riwayatKondisi: "-",
-                kondisiLengan: "-",
-                perubahanKesulitan: "-",
-                pengalamanProstetik: "-",
-                bantuanSehariHari: "-"
-            },
-            seksiB: {
-                alasanRagaArm: "Permohonan pengajuan alat bantu tangan prostetik Raga Arm.",
-                harapanUtama: "Dapat beraktivitas dan bekerja secara mandiri.",
-                komitmenHarian: "Sanggup memakai setiap hari",
-                kesiapanAdaptasi: "8/10"
-            },
-            seksiC: {
-                rencanaMasaDepan: "Pengembangan usaha / bekerja mandiri",
-                peranRagaArm: "Membantu meningkatkan produktivitas harian"
-            },
-            seksiD: {
-                sumberPenghasilan: "Hasil usaha / pekerjaan harian",
-                tanggunganKeluarga: "Keluarga"
-            },
-            seksiE: {
-                kesiapanKeBandung: "Bersedia",
-                laporanPublikasi: "Bersedia",
-                minatPelatihan: "Berminat"
-            },
-            seksiF: {
-                tantanganBangkit: "Tetap semangat dan berjuang mandiri",
-                hubunganKeluarga: "Baik",
-                hubunganTeman: "Baik",
-                kegiatanSosial: "Aktif"
-            }
-        };
-
-        const data = {
-            nama,
-            umur,
+            umur: "-",
             jenisKelamin,
             ringkasan: previewSnippet,
-            ekonomi: "Hasil usaha / pekerjaan harian",
-            motivasi: "Permohonan pengajuan alat bantu tangan prostetik Raga Arm.",
+            ekonomi: "Hasil usaha / pekerjaan",
+            motivasi: "Permohonan alat bantu prostetik Raga Arm.",
             assessmentJson: JSON.stringify(parsedJson)
-        };
-
-        return { success: true, data };
-
-    } catch (error: any) {
-        console.error("Text parsing error:", error);
-        return { 
-            success: true, 
-            data: {
-                nama: "Kandidat Baru",
-                umur: "-",
-                jenisKelamin: "-",
-                ringkasan: transcriptText.slice(0, 200) || "-",
-                ekonomi: "-",
-                motivasi: "-",
-                assessmentJson: JSON.stringify({ nama: "Kandidat Baru", transkrip: transcriptText })
-            } 
-        };
-    }
+        }
+    };
 }
