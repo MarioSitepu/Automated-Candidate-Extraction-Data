@@ -5,6 +5,7 @@ import { Loader2, CheckCircle2, AlertCircle, X, ChevronRight } from "lucide-reac
 import Link from "next/link";
 import { uploadAndExtract, extractDataFromTranscript, runVideoToText } from "../actions/extract";
 import { createCandidate } from "../actions/candidate";
+import { compressAudioInBrowser } from "../utils/clientAudio";
 
 export type UploadStatus = "idle" | "transcribing" | "extracting" | "saving" | "completed" | "error";
 
@@ -105,24 +106,31 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
     setCurrentTask({
       fileName: file.name,
       status: "transcribing",
-      progressText: "Mentranskripsi audio menggunakan AI Whisper...",
+      progressText: "Mengekstrak trek audio dari file...",
     });
 
     addNotification({
       title: "Transkripsi AI Dimulai",
-      message: `Memproses file ${file.name} dengan Groq Whisper API.`,
+      message: `Memproses file ${file.name} dengan Deepgram Nova-3 AI.`,
       type: "info",
     });
 
     try {
-      // Step 1: Compress & Transcribe via Raw Stream Route
+      // Step 1: Compress large video/audio files in browser to lightweight WAV (~1-3 MB)
+      // This bypasses Vercel's 4.5 MB serverless body limit & 60s timeout completely!
+      const fileToSend = await compressAudioInBrowser(file, (progressText) => {
+        setCurrentTask((prev) => prev ? { ...prev, progressText } : null);
+      });
+
+      setCurrentTask((prev) => prev ? { ...prev, progressText: "Mengunggah dan mentranskripsi audio via Deepgram Nova-3..." } : null);
+
       const apiRes = await fetch("/api/upload", {
         method: "POST",
         headers: {
-          "x-file-name": encodeURIComponent(file.name),
-          "content-type": file.type || "application/octet-stream",
+          "x-file-name": encodeURIComponent(fileToSend.name),
+          "content-type": fileToSend.type || "application/octet-stream",
         },
-        body: file,
+        body: fileToSend,
       });
 
       if (!apiRes.ok) {
