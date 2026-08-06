@@ -192,25 +192,31 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       console.error("Background upload error:", error);
       let formattedMsg = error.message || "Gagal memproses file.";
 
-      if (
+      const isSizeError =
         formattedMsg.includes("Unexpected end of form") ||
         formattedMsg.includes("maxBodySize") ||
         formattedMsg.includes("payload") ||
-        formattedMsg.includes("413")
-      ) {
-        const sizeMb = (file.size / (1024 * 1024)).toFixed(0);
-        formattedMsg = `⚠️ Ukuran file Anda (${sizeMb} MB) melebihi batas upload langsung (500 MB). Harap gunakan tab 'Google Drive' untuk memproses file berukuran besar tanpa hambatan.`;
+        formattedMsg.includes("413");
+
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+
+      if (isSizeError) {
+        if (file.size > 500 * 1024 * 1024) {
+          formattedMsg = `⚠️ Ukuran file Anda (${sizeMb} MB) melebihi batas upload langsung (500 MB). Harap gunakan tab 'Google Drive' untuk memproses file berukuran besar tanpa hambatan.`;
+        } else {
+          formattedMsg = `⚠️ Gagal mengunggah file (${sizeMb} MB) ke server. Server Next.js menolak payload request. Silakan muat ulang halaman (F5) atau gunakan tab Google Drive.`;
+        }
       }
 
       setCurrentTask({
         fileName: file.name,
         status: "error",
-        progressText: "Ukuran file melebihi batas 500 MB.",
+        progressText: "Gagal mengunggah file lokal.",
         errorMsg: formattedMsg,
       });
 
       addNotification({
-        title: "File Melebihi Batas (500 MB)",
+        title: "Gagal Upload File Lokal",
         message: formattedMsg,
         type: "error",
       });

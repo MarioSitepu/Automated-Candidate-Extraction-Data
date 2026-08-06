@@ -1,12 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Loader2, UploadCloud, CheckCircle2, HardDrive, Link as LinkIcon, Sparkles } from "lucide-react";
+import { Loader2, UploadCloud, CheckCircle2, HardDrive, Link as LinkIcon, Sparkles, AlertCircle, X } from "lucide-react";
 import { useUpload } from "../../context/UploadContext";
 import Link from "next/link";
 
 export default function UploadPage() {
-  const { currentTask, startUpload, startGDriveUpload } = useUpload();
+  const { currentTask, startUpload, startGDriveUpload, dismissTask } = useUpload();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [activeTab, setActiveTab] = useState<"file" | "gdrive">("file");
@@ -107,10 +107,39 @@ export default function UploadPage() {
                 Lihat Detail Kandidat
               </Link>
               <button 
-                onClick={() => setGdriveInput("")}
+                onClick={() => {
+                  dismissTask();
+                  setGdriveInput("");
+                }}
                 className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-50 transition-colors cursor-pointer"
               >
                 Proses File Lain
+              </button>
+            </div>
+          </div>
+        ) : currentTask?.status === "error" ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-left space-y-3 mb-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2 text-amber-800 font-bold">
+                <AlertCircle className="w-5 h-5 text-amber-600" />
+                <span>Pemberitahuan Sistem</span>
+              </div>
+              <button
+                onClick={dismissTask}
+                className="text-amber-700 hover:text-amber-900 p-1 rounded-md hover:bg-amber-100/50 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-amber-900 whitespace-pre-line leading-relaxed font-medium">
+              {currentTask.errorMsg}
+            </p>
+            <div className="pt-1 flex items-center space-x-2">
+              <button
+                onClick={dismissTask}
+                className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 transition-colors shadow-sm cursor-pointer"
+              >
+                Tutup & Coba Lagi
               </button>
             </div>
           </div>

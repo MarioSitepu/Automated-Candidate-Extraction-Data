@@ -37,135 +37,39 @@ function runFFmpeg(args: string[]): Promise<void> {
   });
 }
 
-// Resolves true GDrive media CDN stream URL by parsing redirects and confirmation tokens in 0.2s
-function resolveDirectStreamUrl(cleanFileId: string): Promise<string> {
-  return new Promise((resolve) => {
-    const initialUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`;
-
-    function check(url: string, count = 0) {
-      if (count > 5) return resolve(initialUrl);
-      const client = url.startsWith("https") ? https : http;
-      client.get(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" } }, (res) => {
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          const redirectUrl = res.headers.location.startsWith("http") 
-            ? res.headers.location 
-            : `https://drive.google.com${res.headers.location}`;
-          return check(redirectUrl, count + 1);
-        }
-        const contentType = res.headers["content-type"] || "";
-        if (contentType.includes("text/html")) {
-          let html = "";
-          res.on("data", chunk => html += chunk.toString());
-          res.on("end", () => {
-            const hrefMatch = html.match(/href="([^"]*drive\.usercontent\.google\.com\/download[^"]*)"/) ||
-                              html.match(/action="([^"]*drive\.usercontent\.google\.com\/download[^"]*)"/) ||
-                              html.match(/href="([^"]*uc\?export=download[^"]*)"/);
-            if (hrefMatch && hrefMatch[1]) {
-              const fullUrl = hrefMatch[1].replace(/&amp;/g, "&");
-              const resolved = fullUrl.startsWith("http") ? fullUrl : `https://drive.google.com${fullUrl}`;
-              return resolve(resolved);
-            }
-            const confirmMatch = html.match(/confirm=([a-zA-Z0-9_-]+)/) || html.match(/name="confirm" value="([a-zA-Z0-9_-]+)"/);
-            const uuidMatch = html.match(/uuid=([a-zA-Z0-9_-]+)/);
-            if (confirmMatch) {
-              const token = confirmMatch[1];
-              const uuid = uuidMatch ? `&uuid=${uuidMatch[1]}` : "";
-              return resolve(`https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=${token}${uuid}`);
-            }
-            resolve(initialUrl);
-          });
-        } else {
-          resolve(url);
-        }
-      }).on("error", () => resolve(initialUrl));
-    }
-    check(initialUrl);
-  });
+interface ResolvedStream {
+  url: string;
+  cookies?: string[];
+  isQuotaExceeded?: boolean;
 }
 
-// Parallel Multi-Threaded Range Downloader (Bypasses GDrive 1x stream speed throttle, downloads 655MB in 18s)
-async function downloadGDriveParallel(directUrl: string, targetPath: string, concurrency = 8): Promise<boolean> {
-  return new Promise((resolve) => {
-    const client = directUrl.startsWith("https") ? https : http;
-    const req = client.get(directUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        "Range": "bytes=0-1024"
-      }
-    }, (res) => {
-      const contentRange = res.headers["content-range"] || "";
-      const match = contentRange.match(/\/(\d+)/);
-      let totalBytes = match && match[1] ? parseInt(match[1], 10) : parseInt(res.headers["content-length"] || "0", 10);
-      res.destroy();
-
-      if (!totalBytes || totalBytes < 1000) {
-        return resolve(false);
-      }
-
-      const chunkSize = Math.ceil(totalBytes / concurrency);
-      const chunkFiles: string[] = [];
-      let completedChunks = 0;
-      let failed = false;
-
-      for (let i = 0; i < concurrency; i++) {
-        const start = i * chunkSize;
-        const end = Math.min((i + 1) * chunkSize - 1, totalBytes - 1);
-        const chunkPath = `${targetPath}.part${i}`;
-        chunkFiles.push(chunkPath);
-
-        const rangeReq = client.get(directUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0",
-            "Range": `bytes=${start}-${end}`
-          }
-        }, (rangeRes) => {
-          if (rangeRes.statusCode !== 206 && rangeRes.statusCode !== 200) {
-            failed = true;
-            return;
-          }
-          const fileStream = fsSync.createWriteStream(chunkPath);
-          rangeRes.pipe(fileStream);
-          fileStream.on("finish", () => {
-            fileStream.close(() => {
-              completedChunks++;
-              if (completedChunks === concurrency && !failed) {
-                try {
-                  const finalStream = fsSync.createWriteStream(targetPath);
-                  for (const file of chunkFiles) {
-                    const data = fsSync.readFileSync(file);
-                    finalStream.write(data);
-                    fsSync.unlinkSync(file);
-                  }
-                  finalStream.end();
-                  finalStream.on("finish", () => resolve(true));
-                } catch (err) {
-                  resolve(false);
-                }
-              }
-            });
-          });
-        });
-
-        rangeReq.on("error", () => {
-          failed = true;
-          resolve(false);
-        });
-      }
-    });
-
-    req.on("error", () => {
-      resolve(false);
-    });
-
-    req.setTimeout(10000, () => {
-      req.destroy();
-      resolve(false);
-    });
-  });
+function findYtdlpPath(): string | null {
+  const candidates = [
+    `C:\\Users\\user\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\yt-dlp.exe`,
+    `C:\\Users\\user\\AppData\\Local\\Programs\\Python\\Python311\\Scripts\\yt-dlp.exe`,
+    "yt-dlp.exe",
+    "yt-dlp"
+  ];
+  for (const c of candidates) {
+    if (path.isAbsolute(c) && fsSync.existsSync(c)) return c;
+  }
+  return null;
 }
 
-// Native HTTPS GDrive file downloader (Fixes Undici fetch UND_ERR_BODY_TIMEOUT & memory limits)
-function downloadGDriveNative(cleanFileId: string, targetVideoPath: string): Promise<boolean> {
+function findFFmpegDir(): string | null {
+  const candidates = [
+    `C:\\Users\\user\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.1.2-full_build\\bin`,
+    `C:\\ffmpeg\\bin`,
+    `C:\\Program Files\\ffmpeg\\bin`
+  ];
+  for (const c of candidates) {
+    if (fsSync.existsSync(path.join(c, "ffmpeg.exe"))) return c;
+  }
+  return null;
+}
+
+// Resolves true GDrive media CDN stream URL by following redirects, tracking session cookies, and parsing warning & form pages
+function resolveDirectStreamUrl(cleanFileId: string): Promise<ResolvedStream> {
   return new Promise((resolve) => {
     const candidateUrls = [
       `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`,
@@ -174,106 +78,261 @@ function downloadGDriveNative(cleanFileId: string, targetVideoPath: string): Pro
     ];
 
     let candidateIndex = 0;
+    const cookieJar: string[] = [];
+    let isQuotaExceeded = false;
 
     function tryNextCandidate() {
       if (candidateIndex >= candidateUrls.length) {
-        return resolve(false);
+        return resolve({ url: candidateUrls[0], cookies: cookieJar, isQuotaExceeded });
       }
-      const nextUrl = candidateUrls[candidateIndex++];
-      fetchUrl(nextUrl, 0);
+      checkUrl(candidateUrls[candidateIndex++], 0);
     }
 
-    function fetchUrl(targetUrl: string, redirectCount = 0) {
-      if (redirectCount > 8) {
-        return tryNextCandidate();
-      }
+    function checkUrl(targetUrl: string, count = 0) {
+      if (count > 8) return tryNextCandidate();
 
       const client = targetUrl.startsWith("https") ? https : http;
-      const req = client.get(targetUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      const headers: Record<string, string> = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      };
+      if (cookieJar.length > 0) {
+        headers["Cookie"] = cookieJar.join("; ");
+      }
+
+      const req = client.get(targetUrl, { headers }, (res) => {
+        // Track response Set-Cookie headers
+        const setCookies = res.headers["set-cookie"];
+        if (setCookies) {
+          for (const c of setCookies) {
+            const cookiePair = c.split(";")[0];
+            if (cookiePair && !cookieJar.includes(cookiePair)) {
+              cookieJar.push(cookiePair);
+            }
+          }
         }
-      }, (res) => {
-        // Handle HTTP Redirects (301, 302, 303, 307)
+
+        // Handle Redirects (301, 302, 303, 307)
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           const redirectUrl = res.headers.location.startsWith("http") 
             ? res.headers.location 
             : `https://drive.google.com${res.headers.location}`;
-          return fetchUrl(redirectUrl, redirectCount + 1);
-        }
-
-        if (res.statusCode !== 200) {
-          return tryNextCandidate();
+          return checkUrl(redirectUrl, count + 1);
         }
 
         const contentType = res.headers["content-type"] || "";
         if (contentType.includes("text/html")) {
-          let bodyText = "";
-          res.on("data", (chunk) => { bodyText += chunk.toString(); });
+          let html = "";
+          res.on("data", chunk => html += chunk.toString());
           res.on("end", () => {
-            // Find download link in HTML warning page
-            const hrefMatch = bodyText.match(/href="([^"]*drive\.usercontent\.google\.com\/download[^"]*)"/) ||
-                              bodyText.match(/action="([^"]*drive\.usercontent\.google\.com\/download[^"]*)"/) ||
-                              bodyText.match(/href="([^"]*uc\?export=download[^"]*)"/);
+            if (
+              html.includes("Quota exceeded") ||
+              html.includes("Too many users") ||
+              html.includes("kuota") ||
+              html.includes("terlalu banyak pengguna") ||
+              html.includes("can't view or download") ||
+              html.includes("tidak dapat melihat atau mengunduh")
+            ) {
+              isQuotaExceeded = true;
+            }
 
+            // Extract form action & all hidden inputs (Google Drive virus warning page form submission)
+            const actionMatch = html.match(/action="([^"]+)"/);
+            const inputMatches = [...html.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]+)">/g)];
+            if (actionMatch && inputMatches.length > 0) {
+              const params = new URLSearchParams();
+              for (const m of inputMatches) {
+                params.append(m[1], m[2]);
+              }
+              const formActionUrl = actionMatch[1].startsWith("http") 
+                ? `${actionMatch[1]}?${params.toString()}` 
+                : `https://drive.google.com${actionMatch[1]}?${params.toString()}`;
+              return checkUrl(formActionUrl, count + 1);
+            }
+
+            const hrefMatch = html.match(/href="([^"]*drive\.usercontent\.google\.com\/download[^"]*)"/) ||
+                              html.match(/href="([^"]*uc\?export=download[^"]*)"/);
             if (hrefMatch && hrefMatch[1]) {
               const fullUrl = hrefMatch[1].replace(/&amp;/g, "&");
-              const resolvedUrl = fullUrl.startsWith("http") ? fullUrl : `https://drive.google.com${fullUrl}`;
-              console.log(`   -> Resolved direct HTML download link: ${resolvedUrl}`);
-              return fetchUrl(resolvedUrl, redirectCount + 1);
+              const resolved = fullUrl.startsWith("http") ? fullUrl : `https://drive.google.com${fullUrl}`;
+              return checkUrl(resolved, count + 1);
             }
 
-            const confirmMatch = bodyText.match(/confirm=([a-zA-Z0-9_-]+)/) || bodyText.match(/name="confirm" value="([a-zA-Z0-9_-]+)"/);
-            const uuidMatch = bodyText.match(/uuid=([a-zA-Z0-9_-]+)/);
-
+            const confirmMatch = html.match(/confirm=([a-zA-Z0-9_-]+)/) || html.match(/name="confirm" value="([a-zA-Z0-9_-]+)"/);
+            const uuidMatch = html.match(/uuid=([a-zA-Z0-9_-]+)/) || html.match(/name="uuid" value="([a-zA-Z0-9_-]+)"/);
             if (confirmMatch) {
-              const confirmToken = confirmMatch[1];
-              const uuidParam = uuidMatch ? `&uuid=${uuidMatch[1]}` : "";
-              const confirmedUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=${confirmToken}${uuidParam}`;
-              return fetchUrl(confirmedUrl, redirectCount + 1);
+              const token = confirmMatch[1];
+              const uuid = uuidMatch ? `&uuid=${uuidMatch[1]}` : "";
+              const confirmedUrl = `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=${token}${uuid}`;
+              return checkUrl(confirmedUrl, count + 1);
             }
-
             tryNextCandidate();
           });
-          return;
+        } else {
+          // Confirmed binary stream endpoint reached
+          resolve({ url: targetUrl, cookies: cookieJar, isQuotaExceeded });
         }
-
-        // Direct binary stream write to disk
-        const fileStream = fsSync.createWriteStream(targetVideoPath);
-        res.pipe(fileStream);
-
-        fileStream.on("finish", () => {
-          fileStream.close(() => {
-            // Verify downloaded file size
-            const stat = fsSync.statSync(targetVideoPath);
-            if (stat.size > 1000) {
-              resolve(true);
-            } else {
-              fsSync.unlink(targetVideoPath, () => {});
-              tryNextCandidate();
-            }
-          });
-        });
-
-        fileStream.on("error", () => {
-          fsSync.unlink(targetVideoPath, () => {});
-          tryNextCandidate();
-        });
       });
 
-      req.on("error", (err) => {
-        console.error("Native HTTPS request error:", err?.message);
-        tryNextCandidate();
-      });
-
-      // 15-minute socket timeout
-      req.setTimeout(900000, () => {
+      req.on("error", () => tryNextCandidate());
+      req.setTimeout(10000, () => {
         req.destroy();
         tryNextCandidate();
       });
     }
 
     tryNextCandidate();
+  });
+}
+
+// Fallback yt-dlp GDrive videoplayback stream extractor
+function downloadViaYtdlp(cleanFileId: string, outputMp3Path: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const ytdlpPath = findYtdlpPath();
+    if (!ytdlpPath) {
+      return resolve(false);
+    }
+
+    const ffmpegDir = findFFmpegDir();
+    const gdriveUrl = `https://drive.google.com/file/d/${cleanFileId}/view`;
+    const args = [
+      gdriveUrl,
+      "-x", "--audio-format", "mp3",
+      "-o", outputMp3Path,
+      "--socket-timeout", "15",
+      "--retries", "3"
+    ];
+    if (ffmpegDir) {
+      args.push("--ffmpeg-location", ffmpegDir);
+    }
+
+    const ff = spawn(ytdlpPath, args);
+    let finished = false;
+
+    const timeout = setTimeout(() => {
+      if (!finished) {
+        finished = true;
+        try { ff.kill(); } catch {}
+        resolve(false);
+      }
+    }, 60000);
+
+    ff.on("close", (code) => {
+      if (!finished) {
+        finished = true;
+        clearTimeout(timeout);
+        if (code === 0 && fsSync.existsSync(outputMp3Path) && fsSync.statSync(outputMp3Path).size > 5000) {
+          resolve(true);
+        } else {
+          resolve(false);
+        }
+      }
+    });
+
+    ff.on("error", () => {
+      if (!finished) {
+        finished = true;
+        clearTimeout(timeout);
+        resolve(false);
+      }
+    });
+  });
+}
+
+// Single-pass Native GDrive Stream Downloader with Socket Inactivity Monitoring
+function downloadGDriveStream(resolved: ResolvedStream, targetPath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const client = resolved.url.startsWith("https") ? https : http;
+    const headers: Record<string, string> = {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    };
+    if (resolved.cookies && resolved.cookies.length > 0) {
+      headers["Cookie"] = resolved.cookies.join("; ");
+    }
+
+    const req = client.get(resolved.url, { headers }, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        const redirectUrl = res.headers.location.startsWith("http") 
+          ? res.headers.location 
+          : `https://drive.google.com${res.headers.location}`;
+        return downloadGDriveStream({ url: redirectUrl, cookies: resolved.cookies }, targetPath).then(resolve);
+      }
+
+      if (res.statusCode !== 200 && res.statusCode !== 206) {
+        return resolve(false);
+      }
+
+      const contentType = res.headers["content-type"] || "";
+      if (contentType.includes("text/html")) {
+        return resolve(false);
+      }
+
+      const fileStream = fsSync.createWriteStream(targetPath);
+
+      let inactivityTimeout = setTimeout(() => {
+        req.destroy();
+        fsSync.unlink(targetPath, () => {});
+        resolve(false);
+      }, 15000);
+
+      res.on("data", () => {
+        clearTimeout(inactivityTimeout);
+        inactivityTimeout = setTimeout(() => {
+          req.destroy();
+          fsSync.unlink(targetPath, () => {});
+          resolve(false);
+        }, 15000);
+      });
+
+      res.pipe(fileStream);
+
+      fileStream.on("finish", () => {
+        clearTimeout(inactivityTimeout);
+        fileStream.close(() => {
+          try {
+            const stat = fsSync.statSync(targetPath);
+            if (stat.size > 5000) {
+              resolve(true);
+            } else {
+              fsSync.unlink(targetPath, () => {});
+              resolve(false);
+            }
+          } catch {
+            resolve(false);
+          }
+        });
+      });
+
+      fileStream.on("error", () => {
+        clearTimeout(inactivityTimeout);
+        fsSync.unlink(targetPath, () => {});
+        resolve(false);
+      });
+    });
+
+    req.on("error", () => resolve(false));
+    req.setTimeout(15000, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+// Fallback native GDrive file downloader across candidate URLs
+function downloadGDriveNative(cleanFileId: string, targetVideoPath: string): Promise<boolean> {
+  return new Promise(async (resolve) => {
+    const candidateUrls = [
+      `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t`,
+      `https://drive.google.com/uc?export=download&id=${cleanFileId}&confirm=t`,
+      `https://drive.google.com/uc?id=${cleanFileId}&export=download`,
+    ];
+
+    for (const url of candidateUrls) {
+      const resolved = await resolveDirectStreamUrl(cleanFileId);
+      const ok = await downloadGDriveStream(resolved, targetVideoPath);
+      if (ok) return resolve(true);
+    }
+
+    resolve(false);
   });
 }
 
@@ -408,38 +467,125 @@ export async function runVideoToText(fileIdOrUrl: string) {
 
     const timestamp = Date.now();
     const tempAudio = path.join(process.cwd(), `tmp_gdrive_${timestamp}.mp3`);
+    const tempVideo = path.join(process.cwd(), `tmp_gdrive_video_${timestamp}.mp4`);
 
     try {
-      const tempVideo = path.join(process.cwd(), `tmp_gdrive_video_${timestamp}.mp4`);
       console.log(`1. Resolving direct GDrive media stream URL: ${cleanFileId}`);
-      const directUrl = await resolveDirectStreamUrl(cleanFileId);
-      
-      console.log(`2. Parallel downloading GDrive video (8 threads)...`);
-      let downloaded = await downloadGDriveParallel(directUrl, tempVideo, 8);
+      const resolvedStream = await resolveDirectStreamUrl(cleanFileId);
 
-      if (!downloaded || !fsSync.existsSync(tempVideo)) {
-        console.log("   -> Parallel download failed, falling back to native downloader...");
-        downloaded = await downloadGDriveNative(cleanFileId, tempVideo);
+      let extractedAudio = false;
+
+      // Stage 1: Fast Direct FFmpeg Stream Extraction (streams & converts MP3 directly on-the-fly in seconds)
+      if (resolvedStream.url) {
+        console.log(`2. Stream extracting MP3 audio directly via FFmpeg...`);
+        try {
+          const ffmpegArgs = [
+            "-rw_timeout", "15000000",
+            "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          ];
+          if (resolvedStream.cookies && resolvedStream.cookies.length > 0) {
+            ffmpegArgs.push("-headers", `Cookie: ${resolvedStream.cookies.join("; ")}\r\n`);
+          }
+          ffmpegArgs.push("-i", resolvedStream.url, "-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", tempAudio);
+
+          await runFFmpeg(ffmpegArgs);
+          const stat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
+          if (stat.size > 5000) {
+            extractedAudio = true;
+            console.log(`   -> Direct FFmpeg audio stream extraction succeeded! (${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
+          }
+        } catch (streamErr: any) {
+          console.log(`   -> Direct FFmpeg stream extraction failed/timed out. Falling back to next engine...`);
+        }
       }
 
-      if (!downloaded || !fsSync.existsSync(tempVideo)) {
+      // Stage 2: Try yt-dlp CLI engine (bypasses GDrive web quota via videoplayback stream)
+      if (!extractedAudio) {
+        console.log("2b. Trying yt-dlp GDrive videoplayback stream extraction...");
+        const ytdlpOk = await downloadViaYtdlp(cleanFileId, tempAudio);
+        if (ytdlpOk) {
+          extractedAudio = true;
+          console.log("   -> yt-dlp audio stream extraction succeeded!");
+        }
+      }
+
+      // Stage 3: Native Single-Pass HTTP/HTTPS Stream Downloader
+      if (!extractedAudio) {
+        console.log("2c. Downloading GDrive media file via single-pass native stream...");
+        let downloaded = await downloadGDriveStream(resolvedStream, tempVideo);
+
+        if (!downloaded || !fsSync.existsSync(tempVideo)) {
+          downloaded = await downloadGDriveNative(cleanFileId, tempVideo);
+        }
+
+        if (downloaded && fsSync.existsSync(tempVideo)) {
+          const videoStat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
+          console.log(`   -> GDrive video download finished! (Size: ${(videoStat.size / (1024 * 1024)).toFixed(2)} MB)`);
+
+          console.log("3. Extracting MP3 audio locally via FFmpeg...");
+          await runFFmpeg(["-i", tempVideo, "-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", tempAudio]);
+          await fs.unlink(tempVideo).catch(() => {});
+          
+          const stat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
+          if (stat.size > 5000) {
+            extractedAudio = true;
+          }
+        }
+      }
+
+      // Stage 4: OAuth API v3 fallback if ACCESS_TOKEN present
+      if (!extractedAudio && ACCESS_TOKEN && ACCESS_TOKEN.trim().length > 0) {
+        console.log("2d. Trying GDrive API v3 with OAuth ACCESS_TOKEN...");
+        try {
+          const gdriveApiUrl = `https://www.googleapis.com/drive/v3/files/${cleanFileId}?alt=media`;
+          const authHeader = `Authorization: Bearer ${ACCESS_TOKEN.trim()}\r\n`;
+          await runFFmpeg([
+            "-rw_timeout", "15000000",
+            "-headers", authHeader,
+            "-i", gdriveApiUrl,
+            "-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", tempAudio
+          ]);
+          const stat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
+          if (stat.size > 5000) {
+            extractedAudio = true;
+          }
+        } catch (apiErr: any) {
+          console.error("GDrive API v3 OAuth failed:", apiErr?.message);
+        }
+      }
+
+      // Stage 5: Google Drive API Key fallback if GOOGLE_DRIVE_API_KEY present in .env
+      const GOOGLE_DRIVE_API_KEY = process.env.GOOGLE_DRIVE_API_KEY;
+      if (!extractedAudio && GOOGLE_DRIVE_API_KEY && GOOGLE_DRIVE_API_KEY.trim().length > 0) {
+        console.log("2e. Trying GDrive API v3 with GOOGLE_DRIVE_API_KEY...");
+        try {
+          const gdriveApiUrl = `https://www.googleapis.com/drive/v3/files/${cleanFileId}?alt=media&key=${GOOGLE_DRIVE_API_KEY.trim()}`;
+          await runFFmpeg([
+            "-rw_timeout", "15000000",
+            "-i", gdriveApiUrl,
+            "-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", tempAudio
+          ]);
+          const stat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
+          if (stat.size > 5000) {
+            extractedAudio = true;
+          }
+        } catch (apiErr: any) {
+          console.error("GDrive API v3 Key failed:", apiErr?.message);
+        }
+      }
+
+      if (!extractedAudio || !fsSync.existsSync(tempAudio)) {
+        if (resolvedStream.isQuotaExceeded) {
+          throw new Error(
+            "🔒 File Google Drive ini telah mencapai batas kuota pengunduhan publik harian dari Google ('Quota Exceeded / Too many users downloaded').\n\n💡 Solusi Mudah & Cepat:\n1. Buka link file tersebut di Google Drive -> Klik tombol Opsi (⋮) -> 'Buat salinan' (Make a copy).\n2. Klik kanan file salinan baru -> Bagikan -> Salin Link, lalu tempelkan link tersebut di sini.\n3. ATAU berpindahlah ke tab 'Upload File Rekaman (Lokal)' untuk memproses file rekaman dari perangkat Anda secara langsung."
+          );
+        }
         throw new Error(
-          "Gagal mengunduh file dari Google Drive. Harap pastikan akses file di Google Drive diatur ke 'Siapa saja yang memiliki link' (Anyone with the link can view)."
+          "Gagal mengunduh file dari Google Drive. Akses file publik sedang dibatasi kuota atau diblokir oleh Google Drive. Harap gunakan fitur 'Buat salinan' (Make a copy) di Google Drive atau gunakan tab Upload File Rekaman."
         );
       }
 
-      const videoStat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
-      console.log(`   -> GDrive video download finished! (Size: ${(videoStat.size / (1024 * 1024)).toFixed(2)} MB)`);
-
-      // Extract MP3 audio locally via FFmpeg (Takes only 2 seconds for local file)
-      console.log("3. Extracting MP3 audio locally via FFmpeg...");
-      await runFFmpeg(["-i", tempVideo, "-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", tempAudio]);
-      await fs.unlink(tempVideo).catch(() => {});
-
       const audioStat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
-      if (audioStat.size < 1000) {
-        throw new Error("Gagal mengekstrak audio dari file video.");
-      }
       console.log(`   -> Audio extraction finished! (Audio Size: ${(audioStat.size / (1024 * 1024)).toFixed(2)} MB)`);
 
       // Step 3: Transcribe via Deepgram Nova-3 or Groq Whisper
@@ -454,6 +600,7 @@ export async function runVideoToText(fileIdOrUrl: string) {
 
       // Clean up temporary files
       await fs.unlink(tempAudio).catch(() => {});
+      await fs.unlink(tempVideo).catch(() => {});
 
       return { 
           success: true, 
@@ -465,6 +612,7 @@ export async function runVideoToText(fileIdOrUrl: string) {
     } catch (error: any) {
       console.error("GDrive extraction error:", error);
       await fs.unlink(tempAudio).catch(() => {});
+      await fs.unlink(tempVideo).catch(() => {});
       return { success: false, message: "Terjadi kesalahan saat ekstraksi Google Drive: " + error.message };
     }
 }
