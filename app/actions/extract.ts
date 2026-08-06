@@ -409,23 +409,31 @@ export async function transcribeAudioFile(audioPath: string) {
 
     const utterances = response?.results?.utterances || [];
     let formattedSegments = utterances.length > 0
-        ? utterances.map((u: any, index: number) => ({
-            id: index + 1,
-            speaker: u.speaker !== undefined ? `Speaker ${u.speaker}` : undefined,
-            startStr: formatTime(u.start),
-            endStr: formatTime(u.end),
-            text: u.speaker !== undefined ? `[Speaker ${u.speaker}]: ${u.transcript.trim()}` : u.transcript.trim(),
-            rawStart: u.start
-        }))
-        : (response?.results?.channels?.[0]?.alternatives?.[0]?.paragraphs?.paragraphs || []).flatMap((p: any) =>
-            p.sentences.map((s: any, index: number) => ({
+        ? utterances.map((u: any, index: number) => {
+            const rawText = (u.transcript || "").trim();
+            const cleanText = rawText.replace(/^\[Speaker\s*\d+\]:\s*/i, "");
+            return {
                 id: index + 1,
-                speaker: s.speaker !== undefined ? `Speaker ${s.speaker}` : undefined,
-                startStr: formatTime(s.start),
-                endStr: formatTime(s.end),
-                text: s.speaker !== undefined ? `[Speaker ${s.speaker}]: ${s.text.trim()}` : s.text.trim(),
-                rawStart: s.start
-            }))
+                speaker: u.speaker !== undefined ? u.speaker : undefined,
+                startStr: formatTime(u.start),
+                endStr: formatTime(u.end),
+                text: cleanText,
+                rawStart: u.start
+            };
+        })
+        : (response?.results?.channels?.[0]?.alternatives?.[0]?.paragraphs?.paragraphs || []).flatMap((p: any) =>
+            p.sentences.map((s: any, index: number) => {
+                const rawText = (s.text || "").trim();
+                const cleanText = rawText.replace(/^\[Speaker\s*\d+\]:\s*/i, "");
+                return {
+                    id: index + 1,
+                    speaker: s.speaker !== undefined ? s.speaker : undefined,
+                    startStr: formatTime(s.start),
+                    endStr: formatTime(s.end),
+                    text: cleanText,
+                    rawStart: s.start
+                };
+            })
         );
 
     if (!formattedSegments || formattedSegments.length === 0) {

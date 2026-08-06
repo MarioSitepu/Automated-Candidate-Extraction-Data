@@ -403,6 +403,27 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                   const segTime = segment.rawStart !== undefined ? segment.rawStart : index * 15;
                   const isActive = activeSegmentIndex === index;
 
+                  const rawText = segment.text || "";
+                  let cleanText = rawText;
+                  let isInterviewer = false;
+
+                  if (rawText.match(/^\[Speaker\s*0\]:\s*/i)) {
+                    isInterviewer = true;
+                    cleanText = rawText.replace(/^\[Speaker\s*0\]:\s*/i, "");
+                  } else if (rawText.match(/^\[Speaker\s*\d+\]:\s*/i)) {
+                    isInterviewer = false;
+                    cleanText = rawText.replace(/^\[Speaker\s*\d+\]:\s*/i, "");
+                  } else if (segment.speaker === 0 || segment.speaker === "0" || segment.speaker === "Speaker 0") {
+                    isInterviewer = true;
+                  } else if (segment.speaker !== undefined && segment.speaker !== null) {
+                    isInterviewer = false;
+                  } else {
+                    isInterviewer = index % 2 === 0;
+                  }
+
+                  const candidateFirstName = nama ? nama.split(" ")[0] : (candidate?.nama ? candidate.nama.split(" ")[0] : "Kandidat");
+                  const displaySpeaker = isInterviewer ? "Interviewer" : candidateFirstName;
+
                   return (
                     <div 
                       key={segment.id || index} 
@@ -428,8 +449,8 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
 
                       <div className="flex-1">
                         <div className="flex items-center justify-between mb-1">
-                          <span className={`font-bold text-xs ${index % 2 === 0 ? "text-teal-800" : "text-[#1E3A8A]"}`}>
-                            {index % 2 === 0 ? "Interviewer: " : `${nama ? nama.split(" ")[0] : "Kandidat"}: `}
+                          <span className={`font-bold text-xs ${isInterviewer ? "text-teal-800" : "text-[#1E3A8A]"}`}>
+                            {displaySpeaker}:
                           </span>
                           {isActive && (
                             <span className="text-[9px] font-bold text-teal-700 uppercase tracking-widest bg-teal-100 px-2 py-0.5 rounded-full flex items-center space-x-1">
@@ -441,7 +462,7 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                         <p className={`text-sm leading-relaxed transition-colors ${
                           isActive ? "text-gray-900 font-medium" : "text-gray-700"
                         }`}>
-                          {segment.text}
+                          {cleanText}
                         </p>
                       </div>
                     </div>
