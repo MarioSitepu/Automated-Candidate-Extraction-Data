@@ -527,8 +527,21 @@ export async function runVideoToText(fileIdOrUrl: string) {
           const videoStat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
           console.log(`   -> GDrive video download finished! (Size: ${(videoStat.size / (1024 * 1024)).toFixed(2)} MB)`);
 
-          console.log("3. Extracting MP3 audio locally via FFmpeg...");
-          await runFFmpeg(["-i", tempVideo, "-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", tempAudio]);
+          console.log("3. Extracting/Converting MP3 audio locally via FFmpeg...");
+          try {
+            await runFFmpeg(["-i", tempVideo, "-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", tempAudio]);
+          } catch (ffmpegErr1: any) {
+            console.warn("   -> First pass FFmpeg (-vn) failed, running audio stream conversion pass...");
+            try {
+              await runFFmpeg(["-i", tempVideo, "-c:a", "libmp3lame", "-q:a", "2", "-y", tempAudio]);
+            } catch (ffmpegErr2: any) {
+              console.warn("   -> Direct FFmpeg conversion skipped. Copying downloaded GDrive file directly...");
+              const vStat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
+              if (vStat.size > 5000) {
+                await fs.copyFile(tempVideo, tempAudio).catch(() => {});
+              }
+            }
+          }
           await fs.unlink(tempVideo).catch(() => {});
           
           const stat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
