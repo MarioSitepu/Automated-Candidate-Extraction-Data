@@ -11,7 +11,7 @@ import Groq from "groq-sdk";
 import util from "util";
 
 // Non-blocking FFmpeg process execution (Fixes Windows OS pipe buffer deadlocks)
-function runFFmpeg(args: string[]): Promise<void> {
+export function runFFmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const ff = spawn("ffmpeg", args);
     let stderrText = "";
@@ -374,7 +374,7 @@ export async function extractGDriveFileId(input: string): Promise<string> {
 }
 
 // Helper to transcribe audio using Deepgram Nova-3 or Groq Whisper fallback
-async function transcribeAudioFile(audioPath: string) {
+export async function transcribeAudioFile(audioPath: string) {
     const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
     const GROQ_API_KEY = process.env.GROQ_API_KEY;
 

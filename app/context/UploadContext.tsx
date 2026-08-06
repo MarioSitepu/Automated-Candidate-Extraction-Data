@@ -115,13 +115,14 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
     });
 
     try {
-      // Step 1: Compress & Transcribe via Whisper Stream Route
-      const formData = new FormData();
-      formData.append("file", file);
-
+      // Step 1: Compress & Transcribe via Raw Stream Route
       const apiRes = await fetch("/api/upload", {
         method: "POST",
-        body: formData,
+        headers: {
+          "x-file-name": encodeURIComponent(file.name),
+          "content-type": file.type || "application/octet-stream",
+        },
+        body: file,
       });
 
       if (!apiRes.ok) {
