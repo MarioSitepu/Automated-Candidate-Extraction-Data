@@ -296,3 +296,9 @@ npx tsx prisma/check-db-status.ts
 npm run dev
 ```
 Buka browser di `http://localhost:3000/login` untuk mengakses sistem.
+
+---
+
+## 🔬 Referensi Lanjutan
+- 📑 [**Laporan Teknis & Audit 39 Poin Kritis Arsitektur (`README_TECHNICAL_REPORT.md`)**](file:///c:/Users/user/Documents/MyProject/automated-candidate-data/README_TECHNICAL_REPORT.md) — *Jawaban lengkap & kritis atas 39 pertanyaan arsitektur data, orkestrasi pipeline, mitigasi AI, dan evaluasi laporan PKL.*
+- 🔬 [**Dokumentasi Rekayasa Backend Deep-Dive (`README_BACKEND_DEEPDIVE.md`)**](file:///c:/Users/user/Documents/MyProject/automated-candidate-data/README_BACKEND_DEEPDIVE.md) — *Membahas mitigasi pipe deadlock FFmpeg, timeout STT, connection pooling Supabase, konfigurasi 500MB payload, dan diagnostik CLI.*

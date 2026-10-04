@@ -273,6 +273,8 @@ Buka peramban Anda di [http://localhost:3000](http://localhost:3000).
 Untuk mempelajari lebih dalam mengenai teknis implementasi masing-masing lapisan arsitektur:
 
 - 🛠️ [**Dokumentasi Lengkap Sistem Backend (`README_BACKEND.md`)**](file:///c:/Users/user/Documents/MyProject/automated-candidate-data/README_BACKEND.md) — *Membahas detil Prisma ORM pooling, JWT session, Deepgram API timeout handling, Groq JSON prompting, Multi-tier GDrive downloaders, dan Edge Middleware.*
+- 📑 [**Laporan Teknis & Audit 39 Poin Kritis Arsitektur (`README_TECHNICAL_REPORT.md`)**](file:///c:/Users/user/Documents/MyProject/automated-candidate-data/README_TECHNICAL_REPORT.md) — *Laporan investigasi mendalam menjawab 39 pertanyaan arsitektur, alur orkestrasi data, mitigasi error, dan batasan akademis sistem.*
+- 🔬 [**Dokumentasi Lanjutan Rekayasa Backend Deep-Dive (`README_BACKEND_DEEPDIVE.md`)**](file:///c:/Users/user/Documents/MyProject/automated-candidate-data/README_BACKEND_DEEPDIVE.md) — *Membahas mitigasi pipe deadlock FFmpeg, timeout 10 menit Deepgram, konfigurasi 500MB serverless, Supabase connection pooler, dan CLI diagnostik.*
 - 🎨 [**Dokumentasi Lengkap Sistem Frontend (`README_FRONTEND.md`)**](file:///c:/Users/user/Documents/MyProject/automated-candidate-data/README_FRONTEND.md) — *Membahas Web Audio API in-browser compression, UploadContext global state, Recharts analytics, Click-to-seek audio sync, form 6-seksi asesmen klinis, dan analisis UX.*
 
 ---
