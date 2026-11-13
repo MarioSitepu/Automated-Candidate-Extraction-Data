@@ -26,7 +26,7 @@ async function checkDatabaseStatus() {
     candidates.forEach((c, idx) => {
       let segmentsCount = 0;
       if (c.transcriptJson) {
-        try { segmentsCount = JSON.parse(c.transcriptJson).length; } catch (e) {}
+        try { segmentsCount = JSON.parse(c.transcriptJson).length; } catch {}
       }
       console.log(`   ${idx + 1}. [${c.candidateCode}] ${c.nama} | Umur: ${c.umur || "-"} | Gender: ${c.jenisKelamin || "-"} | Status: ${c.status} | Transkrip: ${segmentsCount} segmen`);
     });
@@ -56,8 +56,9 @@ async function checkDatabaseStatus() {
     console.log("STATUS AKHIR: DATABASE SUPABASE & SERVER ACTIONS 100% HEALTHY");
     console.log("==================================================");
 
-  } catch (error: any) {
-    console.error("❌ TEJADI KESALAHAN SAAT MENGECEK DATABASE:", error.message);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("❌ TEJADI KESALAHAN SAAT MENGECEK DATABASE:", msg);
   }
 }
 

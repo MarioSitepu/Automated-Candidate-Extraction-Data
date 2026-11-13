@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
-import fsSync from "fs";
 import path from "path";
 import { runFFmpeg, transcribeAudioFile } from "@/app/actions/extract";
 
@@ -23,8 +22,8 @@ export async function POST(request: Request) {
   const fileName = rawFileName ? decodeURIComponent(rawFileName) : `upload_${timestamp}.mp4`;
   const ext = path.extname(fileName).toLowerCase() || ".mp4";
 
-  const inputFilePath = path.join(process.cwd(), `tmp_upload_${timestamp}${ext}`);
-  const outputAudio = path.join(process.cwd(), `audio_${timestamp}.mp3`);
+  const inputFilePath = path.join(/*turbopackIgnore: true*/ process.cwd(), `tmp_upload_${timestamp}${ext}`);
+  const outputAudio = path.join(/*turbopackIgnore: true*/ process.cwd(), `audio_${timestamp}.mp3`);
 
   try {
     // 1. Read binary payload via request.arrayBuffer()
@@ -61,7 +60,7 @@ export async function POST(request: Request) {
         "-y",
         outputAudio
       ]);
-    } catch (err1: any) {
+    } catch {
       console.warn("   -> First pass FFmpeg failed, running robust pass with err_detect ignore...");
       await runFFmpeg([
         "-err_detect", "ignore_err",
@@ -85,7 +84,7 @@ export async function POST(request: Request) {
     const formattedSegments = await transcribeAudioFile(outputAudio);
 
     // 4. Save clean audio file for playback in dashboard
-    const uploadsDir = path.join(process.cwd(), "public", "uploads");
+    const uploadsDir = path.join(/*turbopackIgnore: true*/ process.cwd(), "public", "uploads");
     await fs.mkdir(uploadsDir, { recursive: true });
 
     const finalAudioPath = path.join(uploadsDir, `audio_${timestamp}.mp3`);
@@ -102,12 +101,13 @@ export async function POST(request: Request) {
       audioUrl: publicAudioUrl
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("API upload extraction error:", error);
     await fs.unlink(inputFilePath).catch(() => {});
     await fs.unlink(outputAudio).catch(() => {});
+    const message = error instanceof Error ? error.message : "Terjadi kesalahan internal";
     return NextResponse.json(
-      { success: false, message: "Terjadi kesalahan saat ekstraksi AI: " + error.message },
+      { success: false, message: "Terjadi kesalahan saat ekstraksi AI: " + message },
       { status: 500 }
     );
   }

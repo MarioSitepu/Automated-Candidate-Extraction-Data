@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { 
   Bell, 
-  User, 
   Video, 
   Hourglass, 
   CheckSquare, 
@@ -32,26 +31,37 @@ import Link from "next/link";
 import { getDashboardStats } from "../actions/candidate";
 import { useUpload } from "../context/UploadContext";
 
+interface RecentLogItem {
+  id: string;
+  candidateCode: string;
+  nama: string;
+  status: string;
+  createdAt: Date | string;
+}
+
 export default function DashboardPage() {
   const [stats, setStats] = useState({
     total: 0,
     processing: 0,
     ready: 0,
     verified: 0,
-    recentLogs: [] as any[],
+    recentLogs: [] as RecentLogItem[],
   });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function loadStats() {
-      setLoading(true);
-      const res = await getDashboardStats();
-      if (res.success && res.stats) {
-        setStats(res.stats);
+    let ignore = false;
+    getDashboardStats().then((res) => {
+      if (!ignore) {
+        if (res.success && res.stats) {
+          setStats(res.stats);
+        }
+        setLoading(false);
       }
-      setLoading(false);
-    }
-    loadStats();
+    });
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const barData = [
@@ -68,7 +78,7 @@ export default function DashboardPage() {
     { name: 'Diproses AI', value: stats.processing || 1, color: '#38BDF8' }, // Light Blue
   ];
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string | Date | null) => {
     if (!dateString) return "-";
     const d = new Date(dateString);
     return d.toLocaleString("id-ID", {

@@ -1,18 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { LayoutDashboard, Users, LogOut, UploadCloud, HardDrive, Database, RefreshCw } from "lucide-react";
+import { LayoutDashboard, Users, LogOut, UploadCloud, Database, RefreshCw } from "lucide-react";
 import { logoutUser } from "../actions/auth";
 import { getDatabaseStorageStats } from "../actions/candidate";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { UploadProvider } from "../context/UploadContext";
-import { useEffect, useState } from "react";
+import { useEffect, useState, startTransition } from "react";
+
+interface StorageStats {
+  dbSizeBytes: number;
+  dbSizeMb: number;
+  formattedSize: string;
+  percentUsed: number;
+  maxCapacityMb: number;
+  candidateCount: number;
+}
 
 function SidebarStorageWidget() {
-  const [storage, setStorage] = useState<any>(null);
+  const [storage, setStorage] = useState<StorageStats | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadStorage = async () => {
+  const refreshStorage = async () => {
     setLoading(true);
     const res = await getDatabaseStorageStats();
     if (res.success && res.stats) {
@@ -22,13 +31,23 @@ function SidebarStorageWidget() {
   };
 
   useEffect(() => {
-    loadStorage();
+    let ignore = false;
+    startTransition(async () => {
+      setLoading(true);
+      const res = await getDatabaseStorageStats();
+      if (!ignore) {
+        if (res.success && res.stats) {
+          setStorage(res.stats);
+        }
+        setLoading(false);
+      }
+    });
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const percent = storage?.percentUsed || 0;
-  const statusColor =
-    percent > 90 ? "bg-red-500 text-red-700 border-red-200" :
-    percent > 80 ? "bg-amber-500 text-amber-700 border-amber-200" : "bg-teal-600 text-teal-700 border-teal-200";
 
   return (
     <div className="mx-4 mb-3 p-3 bg-white rounded-xl border border-gray-100 shadow-sm space-y-2">
@@ -38,7 +57,7 @@ function SidebarStorageWidget() {
           <span className="text-xs font-bold text-gray-800">Ruang Penyimpanan</span>
         </div>
         <button 
-          onClick={loadStorage} 
+          onClick={refreshStorage} 
           title="Refresh Storage Status"
           className="text-gray-400 hover:text-teal-700 transition-colors p-0.5"
         >
@@ -76,7 +95,6 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
 
   const handleLogout = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -44,7 +44,7 @@ function decodeAndReencodeWav(file: File): Promise<File> {
     reader.onload = async (e) => {
       try {
         const arrayBuffer = e.target?.result as ArrayBuffer;
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         if (!AudioCtx) return reject("No AudioContext");
 
         const audioCtx = new AudioCtx();
@@ -83,7 +83,7 @@ function decodeViaAudioElement(file: File): Promise<File> {
     
     audio.oncanplaythrough = async () => {
       try {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         const ctx = new AudioCtx();
         const dest = ctx.createMediaStreamDestination();
         const source = ctx.createMediaElementSource(audio);
@@ -127,8 +127,8 @@ function audioBufferToWav(buffer: AudioBuffer): Blob {
   const numOfChan = buffer.numberOfChannels;
   const length = buffer.length * numOfChan * 2 + 44;
   const out = new DataView(new ArrayBuffer(length));
-  let channels: Float32Array[] = [];
-  let sampleRate = buffer.sampleRate;
+  const channels: Float32Array[] = [];
+  const sampleRate = buffer.sampleRate;
   let offset = 0;
 
   function writeString(str: string) {

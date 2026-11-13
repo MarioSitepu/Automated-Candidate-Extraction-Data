@@ -15,10 +15,11 @@ export async function GET() {
         candidates: candidateCount,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Keep-alive cron ping error:", error);
+    const message = error instanceof Error ? error.message : "Failed to query database";
     return NextResponse.json(
-      { status: "error", message: error.message || "Failed to query database" },
+      { status: "error", message },
       { status: 500 }
     );
   }

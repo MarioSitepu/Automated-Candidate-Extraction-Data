@@ -72,8 +72,9 @@ async function runTests() {
     console.log("🎉 SEMUA UJI COBA BERHASIL 100%! DATABASE & LOGIK SERVER SEHAT.");
     console.log("==========================================");
 
-  } catch (error: any) {
-    console.error("❌ TESTING GAGAL:", error.message);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("❌ TESTING GAGAL:", msg);
     process.exit(1);
   }
 }

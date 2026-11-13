@@ -8,7 +8,43 @@ import https from "https";
 import http from "http";
 import { DeepgramClient } from "@deepgram/sdk";
 import Groq from "groq-sdk";
-import util from "util";
+
+interface DeepgramUtterance {
+  speaker?: number;
+  start: number;
+  end: number;
+  transcript: string;
+}
+
+interface DeepgramSentence {
+  speaker?: number;
+  start: number;
+  end: number;
+  text: string;
+}
+
+interface DeepgramParagraph {
+  sentences: DeepgramSentence[];
+}
+
+interface DeepgramAlternative {
+  transcript?: string;
+  paragraphs?: {
+    paragraphs?: DeepgramParagraph[];
+  };
+}
+
+interface DeepgramChannel {
+  alternatives?: DeepgramAlternative[];
+}
+
+interface DeepgramResponseData {
+  error?: { message?: string };
+  results?: {
+    utterances?: DeepgramUtterance[];
+    channels?: DeepgramChannel[];
+  };
+}
 
 // Non-blocking FFmpeg process execution (Fixes Windows OS pipe buffer deadlocks)
 export async function runFFmpeg(args: string[]): Promise<void> {
@@ -331,7 +367,7 @@ function downloadGDriveNative(cleanFileId: string, targetVideoPath: string): Pro
       `https://drive.google.com/uc?id=${cleanFileId}&export=download`,
     ];
 
-    for (const url of candidateUrls) {
+    for (let i = 0; i < candidateUrls.length; i++) {
       const resolved = await resolveDirectStreamUrl(cleanFileId);
       const ok = await downloadGDriveStream(resolved, targetVideoPath);
       if (ok) return resolve(true);
@@ -406,15 +442,15 @@ export async function transcribeAudioFile(audioPath: string) {
         setTimeout(() => reject(new Error("Deepgram API request timed out (lebih dari 10 menit)")), 600000)
     );
 
-    const response = await Promise.race([deepgramPromise, timeoutPromise]) as any;
+    const response = (await Promise.race([deepgramPromise, timeoutPromise])) as unknown as DeepgramResponseData;
 
     if (response?.error) {
-        throw new Error(`Deepgram STT Error: ${response.error?.message || response.error}`);
+        throw new Error(`Deepgram STT Error: ${response.error?.message || "Unknown error"}`);
     }
 
     const utterances = response?.results?.utterances || [];
     let formattedSegments = utterances.length > 0
-        ? utterances.map((u: any, index: number) => {
+        ? utterances.map((u: DeepgramUtterance, index: number) => {
             const rawText = (u.transcript || "").trim();
             const cleanText = rawText.replace(/^\[Speaker\s*\d+\]:\s*/i, "");
             return {
@@ -426,8 +462,8 @@ export async function transcribeAudioFile(audioPath: string) {
                 rawStart: u.start
             };
         })
-        : (response?.results?.channels?.[0]?.alternatives?.[0]?.paragraphs?.paragraphs || []).flatMap((p: any) =>
-            p.sentences.map((s: any, index: number) => {
+        : (response?.results?.channels?.[0]?.alternatives?.[0]?.paragraphs?.paragraphs || []).flatMap((p: DeepgramParagraph) =>
+            p.sentences.map((s: DeepgramSentence, index: number) => {
                 const rawText = (s.text || "").trim();
                 const cleanText = rawText.replace(/^\[Speaker\s*\d+\]:\s*/i, "");
                 return {
@@ -446,6 +482,7 @@ export async function transcribeAudioFile(audioPath: string) {
         if (rawTranscript.trim()) {
             formattedSegments = [{
                 id: 1,
+                speaker: undefined,
                 startStr: "00:00",
                 endStr: "00:00",
                 text: rawTranscript.trim(),
@@ -465,8 +502,9 @@ export async function runVideoToText(fileIdOrUrl: string) {
     let cleanFileId = "";
     try {
         cleanFileId = await extractGDriveFileId(fileIdOrUrl);
-    } catch (e: any) {
-        return { success: false, message: e.message };
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : "Gagal mengekstrak ID Google Drive";
+        return { success: false, message };
     }
 
     if (!cleanFileId) {
@@ -474,8 +512,8 @@ export async function runVideoToText(fileIdOrUrl: string) {
     }
 
     const timestamp = Date.now();
-    const tempAudio = path.join(process.cwd(), `tmp_gdrive_${timestamp}.mp3`);
-    const tempVideo = path.join(process.cwd(), `tmp_gdrive_video_${timestamp}.mp4`);
+    const tempAudio = path.join(/*turbopackIgnore: true*/ process.cwd(), `tmp_gdrive_${timestamp}.mp3`);
+    const tempVideo = path.join(/*turbopackIgnore: true*/ process.cwd(), `tmp_gdrive_video_${timestamp}.mp4`);
 
     try {
       console.log(`1. Resolving direct GDrive media stream URL: ${cleanFileId}`);
@@ -502,7 +540,7 @@ export async function runVideoToText(fileIdOrUrl: string) {
             extractedAudio = true;
             console.log(`   -> Direct FFmpeg audio stream extraction succeeded! (${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
           }
-        } catch (streamErr: any) {
+        } catch {
           console.log(`   -> Direct FFmpeg stream extraction failed/timed out. Falling back to next engine...`);
         }
       }
@@ -533,11 +571,11 @@ export async function runVideoToText(fileIdOrUrl: string) {
           console.log("3. Extracting/Converting MP3 audio locally via FFmpeg...");
           try {
             await runFFmpeg(["-i", tempVideo, "-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", tempAudio]);
-          } catch (ffmpegErr1: any) {
+          } catch {
             console.warn("   -> First pass FFmpeg (-vn) failed, running audio stream conversion pass...");
             try {
               await runFFmpeg(["-i", tempVideo, "-c:a", "libmp3lame", "-q:a", "2", "-y", tempAudio]);
-            } catch (ffmpegErr2: any) {
+            } catch {
               console.warn("   -> Direct FFmpeg conversion skipped. Copying downloaded GDrive file directly...");
               const vStat = await fs.stat(tempVideo).catch(() => ({ size: 0 }));
               if (vStat.size > 5000) {
@@ -570,8 +608,9 @@ export async function runVideoToText(fileIdOrUrl: string) {
           if (stat.size > 5000) {
             extractedAudio = true;
           }
-        } catch (apiErr: any) {
-          console.error("GDrive API v3 OAuth failed:", apiErr?.message);
+        } catch (apiErr: unknown) {
+          const msg = apiErr instanceof Error ? apiErr.message : String(apiErr);
+          console.error("GDrive API v3 OAuth failed:", msg);
         }
       }
 
@@ -590,8 +629,9 @@ export async function runVideoToText(fileIdOrUrl: string) {
           if (stat.size > 5000) {
             extractedAudio = true;
           }
-        } catch (apiErr: any) {
-          console.error("GDrive API v3 Key failed:", apiErr?.message);
+        } catch (apiErr: unknown) {
+          const msg = apiErr instanceof Error ? apiErr.message : String(apiErr);
+          console.error("GDrive API v3 Key failed:", msg);
         }
       }
 
@@ -613,7 +653,7 @@ export async function runVideoToText(fileIdOrUrl: string) {
       const formattedSegments = await transcribeAudioFile(tempAudio);
 
       // Save audio to public uploads directory for playback
-      const uploadsDir = path.join(process.cwd(), "public", "uploads");
+      const uploadsDir = path.join(/*turbopackIgnore: true*/ process.cwd(), "public", "uploads");
       await fs.mkdir(uploadsDir, { recursive: true });
       const finalAudioPath = path.join(uploadsDir, `audio_gdrive_${cleanFileId}_${timestamp}.mp3`);
       await fs.copyFile(tempAudio, finalAudioPath).catch(() => {});
@@ -630,19 +670,20 @@ export async function runVideoToText(fileIdOrUrl: string) {
           fileId: cleanFileId 
       };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("GDrive extraction error:", error);
       await fs.unlink(tempAudio).catch(() => {});
       await fs.unlink(tempVideo).catch(() => {});
-      return { success: false, message: "Terjadi kesalahan saat ekstraksi Google Drive: " + error.message };
+      const message = error instanceof Error ? error.message : "Gagal memproses Google Drive";
+      return { success: false, message: "Terjadi kesalahan saat ekstraksi Google Drive: " + message };
     }
 }
 
 export async function uploadAndExtract(formData: FormData) {
-    const GROQ_API_KEY = process.env.GROQ_API_KEY;
+    const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
 
-    if (!GROQ_API_KEY) {
-        return { success: false, message: "GROQ_API_KEY is not set in .env" };
+    if (!DEEPGRAM_API_KEY) {
+        return { success: false, message: "DEEPGRAM_API_KEY is not set in .env" };
     }
 
     const file = formData.get('file') as File;
@@ -652,8 +693,8 @@ export async function uploadAndExtract(formData: FormData) {
 
     const timestamp = Date.now();
     const inputExt = path.extname(file.name) || '.mp4';
-    const inputFilePath = path.join(process.cwd(), `tmp_upload_${timestamp}${inputExt}`);
-    const outputAudio = path.join(process.cwd(), `audio_${timestamp}.mp3`);
+    const inputFilePath = path.join(/*turbopackIgnore: true*/ process.cwd(), `tmp_upload_${timestamp}${inputExt}`);
+    const outputAudio = path.join(/*turbopackIgnore: true*/ process.cwd(), `audio_${timestamp}.mp3`);
 
     try {
         // Step 1: Save the uploaded file to disk
@@ -678,7 +719,7 @@ export async function uploadAndExtract(formData: FormData) {
         const formattedSegments = await transcribeAudioFile(outputAudio);
 
         // Save audio to public uploads directory for playback
-        const uploadsDir = path.join(process.cwd(), "public", "uploads");
+        const uploadsDir = path.join(/*turbopackIgnore: true*/ process.cwd(), "public", "uploads");
         await fs.mkdir(uploadsDir, { recursive: true });
         const finalAudioPath = path.join(uploadsDir, `audio_${timestamp}.mp3`);
         await fs.copyFile(outputAudio, finalAudioPath).catch(() => {});
@@ -690,12 +731,13 @@ export async function uploadAndExtract(formData: FormData) {
 
         return { success: true, segments: formattedSegments, audioUrl: publicAudioUrl };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Extraction error:", error);
         // Clean up on error
         await fs.unlink(inputFilePath).catch(() => {});
         await fs.unlink(outputAudio).catch(() => {});
-        return { success: false, message: "Terjadi kesalahan saat ekstraksi AI: " + error.message };
+        const message = error instanceof Error ? error.message : "Terjadi kesalahan internal";
+        return { success: false, message: "Terjadi kesalahan saat ekstraksi AI: " + message };
     }
 }
 
@@ -780,8 +822,9 @@ Ingat: OUTPUT HARUS HANYA BERUPA JSON OBJECT, TANPA TEKS LAIN.`;
                 };
                 return { success: true, data };
             }
-        } catch (groqErr: any) {
-            console.warn("   -> Groq LLaMA 3.3 extraction error:", groqErr?.message || groqErr);
+        } catch (groqErr: unknown) {
+            const msg = groqErr instanceof Error ? groqErr.message : String(groqErr);
+            console.warn("   -> Groq LLaMA 3.3 extraction error:", msg);
             console.log("   -> Falling back to fast local text parser...");
         }
     }

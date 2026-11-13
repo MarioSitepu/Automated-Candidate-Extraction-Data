@@ -2,6 +2,7 @@
 
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 
 export interface CandidateInput {
   nama: string;
@@ -13,7 +14,7 @@ export interface CandidateInput {
   hobi?: string;
   status?: string;
   audioUrl?: string;
-  transcriptSegments?: any[];
+  transcriptSegments?: unknown[];
   assessmentJson?: string;
 }
 
@@ -50,7 +51,7 @@ async function generateCandidateCode(): Promise<string> {
 export async function createCandidate(data: CandidateInput) {
   try {
     const candidateCode = await generateCandidateCode();
-    const createData: any = {
+    const createData: Prisma.CandidateCreateInput = {
       candidateCode,
       nama: data.nama || "Tanpa Nama",
       umur: data.umur || "-",
@@ -77,19 +78,20 @@ export async function createCandidate(data: CandidateInput) {
     try {
       revalidatePath("/dashboard/candidates");
       revalidatePath("/dashboard");
-    } catch (e) {
+    } catch {
       // Ignored outside Next.js request context
     }
     return { success: true, candidate };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error creating candidate:", error);
-    return { success: false, message: error.message || "Gagal menyimpan kandidat" };
+    const message = error instanceof Error ? error.message : "Gagal menyimpan kandidat";
+    return { success: false, message };
   }
 }
 
 export async function getCandidates(searchQuery?: string, statusFilter?: string, genderFilter?: string) {
   try {
-    const where: any = {};
+    const where: Prisma.CandidateWhereInput = {};
 
     if (searchQuery && searchQuery.trim() !== "") {
       where.OR = [
@@ -113,9 +115,10 @@ export async function getCandidates(searchQuery?: string, statusFilter?: string,
     });
 
     return { success: true, candidates };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching candidates:", error);
-    return { success: false, candidates: [], message: error.message };
+    const message = error instanceof Error ? error.message : "Gagal mengambil data kandidat";
+    return { success: false, candidates: [], message };
   }
 }
 
@@ -135,7 +138,7 @@ export async function getCandidateById(idOrCode: string) {
       return { success: false, message: "Kandidat tidak ditemukan" };
     }
 
-    let transcriptSegments: any[] = [];
+    let transcriptSegments: unknown[] = [];
     if (candidate.transcriptJson) {
       try {
         transcriptSegments = JSON.parse(candidate.transcriptJson);
@@ -145,15 +148,16 @@ export async function getCandidateById(idOrCode: string) {
     }
 
     return { success: true, candidate, transcriptSegments };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching candidate detail:", error);
-    return { success: false, message: error.message };
+    const message = error instanceof Error ? error.message : "Gagal memuat kandidat";
+    return { success: false, message };
   }
 }
 
 export async function updateCandidate(id: string, data: Partial<CandidateInput>) {
   try {
-    const updateData: any = {};
+    const updateData: Prisma.CandidateUpdateInput = {};
     if (data.nama !== undefined) updateData.nama = data.nama;
     if (data.umur !== undefined) updateData.umur = data.umur;
     if (data.jenisKelamin !== undefined) updateData.jenisKelamin = data.jenisKelamin;
@@ -177,13 +181,14 @@ export async function updateCandidate(id: string, data: Partial<CandidateInput>)
       revalidatePath("/dashboard/candidates");
       revalidatePath(`/dashboard/candidates/${id}`);
       revalidatePath("/dashboard");
-    } catch (e) {
+    } catch {
       // Ignored outside Next.js request context
     }
     return { success: true, candidate: updated };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error updating candidate:", error);
-    return { success: false, message: error.message || "Gagal mengupdate kandidat" };
+    const message = error instanceof Error ? error.message : "Gagal mengupdate kandidat";
+    return { success: false, message };
   }
 }
 
@@ -216,7 +221,7 @@ export async function getDashboardStats() {
         recentLogs,
       },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching dashboard stats:", error);
     return {
       success: false,
@@ -234,13 +239,14 @@ export async function deleteCandidate(id: string) {
     try {
       revalidatePath("/dashboard/candidates");
       revalidatePath("/dashboard");
-    } catch (e) {
+    } catch {
       // Ignored outside Next.js request context
     }
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error deleting candidate:", error);
-    return { success: false, message: error.message || "Gagal menghapus kandidat" };
+    const message = error instanceof Error ? error.message : "Gagal menghapus kandidat";
+    return { success: false, message };
   }
 }
 
@@ -251,11 +257,11 @@ export async function getDatabaseStorageStats() {
 
     let dbSizeBytes = 0;
     try {
-      const result: any = await prisma.$queryRaw`SELECT pg_database_size(current_database()) as size;`;
+      const result = await prisma.$queryRaw<Array<{ size: bigint | number }>>`SELECT pg_database_size(current_database()) as size;`;
       if (result && result[0] && result[0].size) {
         dbSizeBytes = Number(result[0].size);
       }
-    } catch (e) {
+    } catch {
       // Fallback estimate if pg_database_size query is constrained
       dbSizeBytes = (candidateCount * 150 + userCount * 10 + 500) * 1024;
     }
@@ -280,7 +286,7 @@ export async function getDatabaseStorageStats() {
         candidateCount,
       },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching database storage stats:", error);
     return {
       success: false,

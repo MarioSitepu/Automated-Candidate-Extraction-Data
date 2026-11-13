@@ -19,15 +19,42 @@ import {
 import { useState, useEffect, useRef, use } from "react";
 import { getCandidateById, updateCandidate } from "../../../actions/candidate";
 
+interface TranscriptSegment {
+  id: number;
+  speaker?: number | string;
+  startStr: string;
+  endStr: string;
+  text: string;
+  rawStart?: number;
+}
+
+interface CandidateDetail {
+  id: string;
+  candidateCode: string;
+  nama: string;
+  umur?: string | null;
+  jenisKelamin?: string | null;
+  ringkasan?: string | null;
+  ekonomi?: string | null;
+  motivasi?: string | null;
+  hobi?: string | null;
+  status: string;
+  audioUrl?: string | null;
+  transcriptJson?: string | null;
+  assessmentJson?: string | null;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+}
+
 export default function CandidateProfilePage({ params }: { params: Promise<{ id: string }> | { id: string } }) {
   // Unwrap params safely
-  const unwrappedParams = typeof (params as any).then === "function" ? use(params as Promise<{ id: string }>) : (params as { id: string });
+  const unwrappedParams = "then" in params ? use(params) : params;
   const candidateIdParam = unwrappedParams.id;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [candidate, setCandidate] = useState<any>(null);
-  const [transcript, setTranscript] = useState<any[]>([]);
+  const [candidate, setCandidate] = useState<CandidateDetail | null>(null);
+  const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   // Form states - Demographics
@@ -94,7 +121,6 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
-  const [activeSegmentIndex, setActiveSegmentIndex] = useState<number | null>(null);
 
   const isLocked = status === "Verified";
 
@@ -103,13 +129,13 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
       setLoading(true);
       const res = await getCandidateById(candidateIdParam);
       if (res.success && res.candidate) {
-        const c: any = res.candidate;
+        const c = res.candidate as unknown as CandidateDetail;
         setCandidate(c);
         setNama(c.nama || "");
         setUmur(c.umur || "");
         setJenisKelamin(c.jenisKelamin || "");
         setStatus(c.status || "Ready");
-        setTranscript(res.transcriptSegments || []);
+        setTranscript((res.transcriptSegments || []) as unknown as TranscriptSegment[]);
 
         if (c.assessmentJson) {
           try {
@@ -125,9 +151,9 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
           }
         } else {
           // Fallback legacy values
-          if (c.ringkasan) setSeksiA((prev) => ({ ...prev, kegiatanSehariHari: c.ringkasan }));
-          if (c.motivasi) setSeksiB((prev) => ({ ...prev, alasanRagaArm: c.motivasi }));
-          if (c.ekonomi) setSeksiD((prev) => ({ ...prev, sumberPenghasilan: c.ekonomi }));
+          if (c.ringkasan) setSeksiA((prev) => ({ ...prev, kegiatanSehariHari: c.ringkasan ?? "" }));
+          if (c.motivasi) setSeksiB((prev) => ({ ...prev, alasanRagaArm: c.motivasi ?? "" }));
+          if (c.ekonomi) setSeksiD((prev) => ({ ...prev, sumberPenghasilan: c.ekonomi ?? "" }));
         }
       } else {
         setMessage({ text: res.message || "Gagal memuat data kandidat", type: "error" });
@@ -138,11 +164,9 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
     fetchDetail();
   }, [candidateIdParam]);
 
-  // Sync Active Segment based on Audio CurrentTime
-  useEffect(() => {
-    if (!transcript || transcript.length === 0) return;
-
-    let activeIdx: number | null = null;
+  // Derived active segment based on audio currentTime
+  const activeSegmentIndex = (() => {
+    if (!transcript || transcript.length === 0) return null;
     for (let i = 0; i < transcript.length; i++) {
       const seg = transcript[i];
       const start = seg.rawStart !== undefined ? seg.rawStart : i * 15;
@@ -150,21 +174,21 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
       const end = nextSeg ? (nextSeg.rawStart !== undefined ? nextSeg.rawStart : (i + 1) * 15) : start + 30;
 
       if (currentTime >= start && currentTime < end) {
-        activeIdx = i;
-        break;
+        return i;
       }
     }
+    return null;
+  })();
 
-    if (activeIdx !== activeSegmentIndex) {
-      setActiveSegmentIndex(activeIdx);
-      if (activeIdx !== null && segmentRefs.current[activeIdx]) {
-        segmentRefs.current[activeIdx]?.scrollIntoView({
-          behavior: "smooth",
-          block: "nearest",
-        });
-      }
+  // Auto-scroll to active transcript segment
+  useEffect(() => {
+    if (activeSegmentIndex !== null && segmentRefs.current[activeSegmentIndex]) {
+      segmentRefs.current[activeSegmentIndex]?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
     }
-  }, [currentTime, transcript, activeSegmentIndex]);
+  }, [activeSegmentIndex]);
 
   const togglePlay = () => {
     if (!audioRef.current) return;
@@ -399,7 +423,7 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                   Tidak ada transkrip wawancara yang tersimpan untuk kandidat ini.
                 </div>
               ) : (
-                transcript.map((segment: any, index: number) => {
+                transcript.map((segment: TranscriptSegment, index: number) => {
                   const segTime = segment.rawStart !== undefined ? segment.rawStart : index * 15;
                   const isActive = activeSegmentIndex === index;
 

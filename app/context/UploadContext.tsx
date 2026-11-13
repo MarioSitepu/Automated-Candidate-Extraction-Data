@@ -3,9 +3,19 @@
 import React, { createContext, useContext, useState } from "react";
 import { Loader2, CheckCircle2, AlertCircle, X, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { uploadAndExtract, extractDataFromTranscript, runVideoToText } from "../actions/extract";
+import { extractDataFromTranscript, runVideoToText } from "../actions/extract";
 import { createCandidate } from "../actions/candidate";
 import { compressAudioInBrowser } from "../utils/clientAudio";
+
+interface ExtractedCandidateData {
+  nama?: string;
+  umur?: string;
+  jenisKelamin?: string;
+  ringkasan?: string;
+  ekonomi?: string;
+  motivasi?: string;
+  assessmentJson?: string;
+}
 
 export type UploadStatus = "idle" | "transcribing" | "extracting" | "saving" | "completed" | "error";
 
@@ -145,7 +155,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       }
 
       const segments = extractRes.segments || [];
-      const fullText = segments.map((s: any) => s.text).join("\n");
+      const fullText = segments.map((s: { text: string }) => s.text).join("\n");
 
       // Step 2: Extract Data via LLaMA 3
       setCurrentTask((prev) =>
@@ -159,7 +169,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       );
 
       const aiResult = await extractDataFromTranscript(fullText);
-      const extractedData: any = aiResult.success ? aiResult.data : {};
+      const extractedData: ExtractedCandidateData = aiResult.success && aiResult.data ? aiResult.data : {};
 
       // Step 3: Save to Supabase DB
       setCurrentTask((prev) =>
@@ -208,9 +218,9 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         candidateCode: dbRes.candidate.candidateCode,
       });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Background upload error:", error);
-      let formattedMsg = error.message || "Gagal memproses file.";
+      let formattedMsg = error instanceof Error ? error.message : "Gagal memproses file.";
 
       const isSizeError =
         formattedMsg.includes("Unexpected end of form") ||
@@ -264,7 +274,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       }
 
       const segments = extractRes.segments || [];
-      const fullText = segments.map((s: any) => s.text).join("\n");
+      const fullText = segments.map((s: { text: string }) => s.text).join("\n");
 
       setCurrentTask((prev) =>
         prev
@@ -277,7 +287,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       );
 
       const aiResult = await extractDataFromTranscript(fullText);
-      const extractedData: any = aiResult.success ? aiResult.data : {};
+      const extractedData: ExtractedCandidateData = aiResult.success && aiResult.data ? aiResult.data : {};
 
       setCurrentTask((prev) =>
         prev
@@ -324,18 +334,19 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         candidateCode: dbRes.candidate.candidateCode,
       });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("GDrive upload error:", error);
+      const errorMsg = error instanceof Error ? error.message : "Gagal memproses link Google Drive.";
       setCurrentTask({
         fileName: "Google Drive Video",
         status: "error",
         progressText: "Terjadi kesalahan saat memproses Google Drive.",
-        errorMsg: error.message || "Gagal memproses link Google Drive.",
+        errorMsg,
       });
 
       addNotification({
         title: "Gagal Memproses Google Drive",
-        message: error.message || "File Google Drive gagal diproses.",
+        message: errorMsg,
         type: "error",
       });
     }

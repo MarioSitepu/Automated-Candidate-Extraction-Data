@@ -1,9 +1,10 @@
 "use server"; // kode akan berjalan di backend atau server
 
 import prisma from "../../lib/prisma";
-import bcrypt from "bcryptjs"
-import { createSession , deleteSession } from "@/app/tokens/session"
-import { z } from "zod" // import zod sebagai validator
+import bcrypt from "bcryptjs";
+import { createSession, deleteSession } from "@/app/tokens/session";
+import { z } from "zod"; // import zod sebagai validator
+import { redirect } from "next/navigation";
 
 //instuksi untuk zod
 const registerSchema = z.object({
@@ -56,8 +57,6 @@ export async function loginUser (emailKetik : string, passwordKetik : string, re
     }
 }
 
-import { redirect } from "next/navigation";
-
 // menghapus token saat logout
 export async function logoutUser() {
     await deleteSession(); // memanggil fungsi logout
@@ -103,7 +102,7 @@ export async function registerUser(emailKetik: string, passwordKetik: string){
         });
 
         return { success: true, message: "Berhasil mendaftar! Silahkan Login."};
-    } catch (error) {
+    } catch {
         return { success: false, message: "Terjadi kesalahan sistem saat mendaftar"};
     }
 }

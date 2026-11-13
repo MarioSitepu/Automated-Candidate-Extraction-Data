@@ -1,29 +1,44 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, startTransition } from "react";
 import { Search, ChevronLeft, ChevronRight, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { getCandidates, deleteCandidate } from "../../actions/candidate";
 
+interface CandidateItem {
+  id: string;
+  candidateCode: string;
+  nama: string;
+  umur?: string | null;
+  jenisKelamin?: string | null;
+  status: string;
+  createdAt: Date | string;
+  transcriptJson?: string | null;
+}
+
 export default function CandidateListPage() {
-  const [candidates, setCandidates] = useState<any[]>([]);
+  const [candidates, setCandidates] = useState<CandidateItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Status: All");
   const [genderFilter, setGenderFilter] = useState("Gender: Semua");
 
-  const loadCandidates = async () => {
-    setLoading(true);
-    const res = await getCandidates(search, statusFilter, genderFilter);
-    if (res.success && res.candidates) {
-      setCandidates(res.candidates);
-    }
-    setLoading(false);
-  };
-
   useEffect(() => {
-    loadCandidates();
+    let ignore = false;
+    startTransition(async () => {
+      setLoading(true);
+      const res = await getCandidates(search, statusFilter, genderFilter);
+      if (!ignore) {
+        if (res.success && res.candidates) {
+          setCandidates(res.candidates);
+        }
+        setLoading(false);
+      }
+    });
+    return () => {
+      ignore = true;
+    };
   }, [search, statusFilter, genderFilter]);
 
   const handleDelete = async (id: string, nama: string) => {
@@ -42,7 +57,7 @@ export default function CandidateListPage() {
     }
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string | Date | null) => {
     if (!dateString) return "-";
     const d = new Date(dateString);
     return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
