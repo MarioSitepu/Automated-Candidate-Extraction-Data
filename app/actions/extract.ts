@@ -475,7 +475,7 @@ export async function transcribeAudioFile(audioPath: string) {
     }
 
     console.log("Transcribing audio EXCLUSIVELY via Deepgram API (Nova-3 + Diarization)...");
-    const deepgram = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY.trim() });
+    const deepgram = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY.trim(), timeoutInSeconds: 600 });
 
     // 10-minute (600s) timeout for large interview audio files
     const deepgramPromise = deepgram.listen.v1.media.transcribeFile(
@@ -487,7 +487,8 @@ export async function transcribeAudioFile(audioPath: string) {
             utterances: true,
             punctuate: true,
             diarize: true, // Diarization enabled for speaker identification
-        }
+        },
+        { timeoutInSeconds: 600 }
     );
 
     const timeoutPromise = new Promise((_, reject) =>
@@ -495,6 +496,82 @@ export async function transcribeAudioFile(audioPath: string) {
     );
 
     const response = (await Promise.race([deepgramPromise, timeoutPromise])) as unknown as DeepgramResponseData;
+
+    if (response?.error) {
+        throw new Error(`Deepgram STT Error: ${response.error?.message || "Unknown error"}`);
+    }
+
+    const utterances = response?.results?.utterances || [];
+    let formattedSegments = utterances.length > 0
+        ? utterances.map((u: DeepgramUtterance, index: number) => {
+            const rawText = (u.transcript || "").trim();
+            const cleanText = rawText.replace(/^\[Speaker\s*\d+\]:\s*/i, "");
+            return {
+                id: index + 1,
+                speaker: u.speaker !== undefined ? u.speaker : undefined,
+                startStr: formatTime(u.start),
+                endStr: formatTime(u.end),
+                text: cleanText,
+                rawStart: u.start
+            };
+        })
+        : (response?.results?.channels?.[0]?.alternatives?.[0]?.paragraphs?.paragraphs || []).flatMap((p: DeepgramParagraph) =>
+            p.sentences.map((s: DeepgramSentence, index: number) => {
+                const rawText = (s.text || "").trim();
+                const cleanText = rawText.replace(/^\[Speaker\s*\d+\]:\s*/i, "");
+                return {
+                    id: index + 1,
+                    speaker: s.speaker !== undefined ? s.speaker : undefined,
+                    startStr: formatTime(s.start),
+                    endStr: formatTime(s.end),
+                    text: cleanText,
+                    rawStart: s.start
+                };
+            })
+        );
+
+    if (!formattedSegments || formattedSegments.length === 0) {
+        const rawTranscript = response?.results?.channels?.[0]?.alternatives?.[0]?.transcript || "";
+        if (rawTranscript.trim()) {
+            formattedSegments = [{
+                id: 1,
+                speaker: undefined,
+                startStr: "00:00",
+                endStr: "00:00",
+                text: rawTranscript.trim(),
+                rawStart: 0
+            }];
+        } else {
+            throw new Error("Deepgram tidak menemukan suara/percakapan pada file audio ini.");
+        }
+    }
+
+    return formattedSegments;
+}
+
+// Direct Cloud-to-Cloud Transcription via URL (Bypasses local downloading, FFmpeg, and Vercel limits completely)
+export async function transcribeAudioUrl(mediaUrl: string) {
+    const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
+
+    if (!DEEPGRAM_API_KEY || DEEPGRAM_API_KEY.trim().length === 0) {
+        throw new Error("Gagal Transkripsi: DEEPGRAM_API_KEY belum diset atau kosong di file .env");
+    }
+
+    console.log("Transcribing media URL DIRECTLY via Deepgram API (Nova-3 + Diarization)...");
+    const deepgram = new DeepgramClient({ apiKey: DEEPGRAM_API_KEY.trim(), timeoutInSeconds: 600 });
+
+    const response = (await deepgram.listen.v1.media.transcribeUrl(
+        {
+            url: mediaUrl,
+            model: "nova-3",
+            language: "id",
+            smart_format: true,
+            punctuate: true,
+            utterances: true,
+            diarize: true,
+        },
+        { timeoutInSeconds: 600 }
+    )) as unknown as DeepgramResponseData;
 
     if (response?.error) {
         throw new Error(`Deepgram STT Error: ${response.error?.message || "Unknown error"}`);
@@ -570,6 +647,26 @@ export async function runVideoToText(fileIdOrUrl: string) {
     try {
       console.log(`1. Resolving direct GDrive media stream URL: ${cleanFileId}`);
       const resolvedStream = await resolveDirectStreamUrl(cleanFileId);
+
+      // Stage 0: Direct Cloud-to-Cloud Deepgram URL Transcription
+      // Completely bypasses downloading 1GB+ files to local disk, Vercel 512MB /tmp limit, and FFmpeg requirements!
+      if (resolvedStream.url && !resolvedStream.isQuotaExceeded) {
+        console.log("0. Attempting direct Deepgram Cloud transcription from resolved stream URL...");
+        try {
+          const directSegments = await transcribeAudioUrl(resolvedStream.url);
+          if (directSegments && directSegments.length > 0) {
+            console.log("   -> Direct Deepgram Cloud transcription SUCCEEDED!");
+            return {
+              success: true,
+              segments: directSegments,
+              audioUrl: resolvedStream.url,
+              fileId: cleanFileId,
+            };
+          }
+        } catch (directErr) {
+          console.warn("   -> Direct Deepgram URL transcription failed, falling back to local extraction pipeline:", directErr);
+        }
+      }
 
       let extractedAudio = false;
 
