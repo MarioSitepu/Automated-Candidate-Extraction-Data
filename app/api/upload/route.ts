@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
+import os from "os";
 import { runFFmpeg, transcribeAudioFile } from "@/app/actions/extract";
 
 export const maxDuration = 300; // 5 minutes max
@@ -22,8 +23,8 @@ export async function POST(request: Request) {
   const fileName = rawFileName ? decodeURIComponent(rawFileName) : `upload_${timestamp}.mp4`;
   const ext = path.extname(fileName).toLowerCase() || ".mp4";
 
-  const inputFilePath = path.join(/*turbopackIgnore: true*/ process.cwd(), `tmp_upload_${timestamp}${ext}`);
-  const outputAudio = path.join(/*turbopackIgnore: true*/ process.cwd(), `audio_${timestamp}.mp3`);
+  const inputFilePath = path.join(os.tmpdir(), `tmp_upload_${timestamp}${ext}`);
+  const outputAudio = path.join(os.tmpdir(), `audio_${timestamp}.mp3`);
 
   try {
     // 1. Read binary payload via request.arrayBuffer()
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
     await fs.writeFile(inputFilePath, buffer);
 
     const stat = await fs.stat(inputFilePath).catch(() => ({ size: 0 }));
-    console.log(`1. Compressing & Converting video file to MP3 audio via FFmpeg (File Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)...`);
+    console.log(`1. Processing uploaded file (File Size: ${(stat.size / (1024 * 1024)).toFixed(2)} MB)...`);
 
     if (stat.size < 100) {
       return NextResponse.json(
@@ -48,7 +49,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. FFmpeg Video to MP3 Audio Conversion
+    // 2. FFmpeg Video to MP3 Audio Conversion (or direct fallback for Deepgram)
+    let ffmpegOk = false;
     try {
       await runFFmpeg([
         "-i", inputFilePath,
@@ -60,35 +62,37 @@ export async function POST(request: Request) {
         "-y",
         outputAudio
       ]);
+      ffmpegOk = true;
     } catch {
       console.warn("   -> First pass FFmpeg failed, running robust pass with err_detect ignore...");
-      await runFFmpeg([
-        "-err_detect", "ignore_err",
-        "-i", inputFilePath,
-        "-vn",
-        "-ac", "2",
-        "-ar", "44100",
-        "-y",
-        outputAudio
-      ]);
+      try {
+        await runFFmpeg([
+          "-err_detect", "ignore_err",
+          "-i", inputFilePath,
+          "-vn",
+          "-ac", "2",
+          "-ar", "44100",
+          "-y",
+          outputAudio
+        ]);
+        ffmpegOk = true;
+      } catch {
+        console.warn("   -> FFmpeg conversion not available. Passing file directly to Deepgram Nova-3...");
+        await fs.copyFile(inputFilePath, outputAudio).catch(() => {});
+      }
     }
 
-    const audioStat = await fs.stat(outputAudio).catch(() => ({ size: 0 }));
-    if (audioStat.size < 500) {
-      throw new Error("Gagal mengonversi video ke MP3 audio via FFmpeg. File video mungkin rusak.");
-    }
+    const targetAudioPath = ffmpegOk ? outputAudio : inputFilePath;
 
-    console.log(`   -> Audio MP3 successfully created! (Audio Size: ${(audioStat.size / (1024 * 1024)).toFixed(2)} MB)`);
+    // 3. Transcribe audio/video directly via Deepgram Nova-3 + Diarization
+    const formattedSegments = await transcribeAudioFile(targetAudioPath);
 
-    // 3. Transcribe clean extracted MP3 via Deepgram Nova-3 + Diarization
-    const formattedSegments = await transcribeAudioFile(outputAudio);
-
-    // 4. Save clean audio file for playback in dashboard
+    // 4. Save clean audio file for playback in dashboard (if filesystem is writable)
     const uploadsDir = path.join(/*turbopackIgnore: true*/ process.cwd(), "public", "uploads");
-    await fs.mkdir(uploadsDir, { recursive: true });
+    await fs.mkdir(uploadsDir, { recursive: true }).catch(() => {});
 
     const finalAudioPath = path.join(uploadsDir, `audio_${timestamp}.mp3`);
-    await fs.copyFile(outputAudio, finalAudioPath).catch(() => {});
+    await fs.copyFile(targetAudioPath, finalAudioPath).catch(() => {});
     const publicAudioUrl = `/uploads/audio_${timestamp}.mp3`;
 
     // Clean up temporary files

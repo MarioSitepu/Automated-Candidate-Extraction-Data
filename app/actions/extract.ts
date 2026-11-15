@@ -4,6 +4,7 @@ import { spawn } from "child_process";
 import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
+import os from "os";
 import https from "https";
 import http from "http";
 import { DeepgramClient } from "@deepgram/sdk";
@@ -377,6 +378,57 @@ function downloadGDriveNative(cleanFileId: string, targetVideoPath: string): Pro
   });
 }
 
+// Download media directly via HTTP/HTTPS without requiring FFmpeg
+function downloadDirectMedia(targetUrl: string, targetPath: string, customHeaders: Record<string, string> = {}): Promise<boolean> {
+  return new Promise((resolve) => {
+    const client = targetUrl.startsWith("https") ? https : http;
+    const headers = {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      ...customHeaders,
+    };
+
+    const req = client.get(targetUrl, { headers }, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return downloadDirectMedia(res.headers.location, targetPath, customHeaders).then(resolve);
+      }
+
+      if (res.statusCode !== 200 && res.statusCode !== 206) {
+        return resolve(false);
+      }
+
+      const contentType = res.headers["content-type"] || "";
+      if (contentType.includes("text/html") || contentType.includes("application/json")) {
+        return resolve(false);
+      }
+
+      const fileStream = fsSync.createWriteStream(targetPath);
+      res.pipe(fileStream);
+
+      fileStream.on("finish", () => {
+        fileStream.close(() => {
+          try {
+            const stat = fsSync.statSync(targetPath);
+            resolve(stat.size > 5000);
+          } catch {
+            resolve(false);
+          }
+        });
+      });
+
+      fileStream.on("error", () => {
+        fsSync.unlink(targetPath, () => {});
+        resolve(false);
+      });
+    });
+
+    req.on("error", () => resolve(false));
+    req.setTimeout(30000, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
 // Helper to format seconds to HH:MM:SS,mmm
 function formatTime(seconds: number) {
     const totalSeconds = Math.floor(seconds);
@@ -512,8 +564,8 @@ export async function runVideoToText(fileIdOrUrl: string) {
     }
 
     const timestamp = Date.now();
-    const tempAudio = path.join(/*turbopackIgnore: true*/ process.cwd(), `tmp_gdrive_${timestamp}.mp3`);
-    const tempVideo = path.join(/*turbopackIgnore: true*/ process.cwd(), `tmp_gdrive_video_${timestamp}.mp4`);
+    const tempAudio = path.join(os.tmpdir(), `tmp_gdrive_${timestamp}.mp3`);
+    const tempVideo = path.join(os.tmpdir(), `tmp_gdrive_video_${timestamp}.mp4`);
 
     try {
       console.log(`1. Resolving direct GDrive media stream URL: ${cleanFileId}`);
@@ -598,15 +650,27 @@ export async function runVideoToText(fileIdOrUrl: string) {
         try {
           const gdriveApiUrl = `https://www.googleapis.com/drive/v3/files/${cleanFileId}?alt=media`;
           const authHeader = `Authorization: Bearer ${ACCESS_TOKEN.trim()}\r\n`;
-          await runFFmpeg([
-            "-rw_timeout", "15000000",
-            "-headers", authHeader,
-            "-i", gdriveApiUrl,
-            "-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", tempAudio
-          ]);
-          const stat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
-          if (stat.size > 5000) {
-            extractedAudio = true;
+          let ffmpegOk = false;
+          try {
+            await runFFmpeg([
+              "-rw_timeout", "15000000",
+              "-headers", authHeader,
+              "-i", gdriveApiUrl,
+              "-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", tempAudio
+            ]);
+            ffmpegOk = true;
+          } catch {
+            console.warn("FFmpeg OAuth stream failed or not installed. Downloading directly via HTTPS stream...");
+          }
+
+          if (!ffmpegOk) {
+            const ok = await downloadDirectMedia(gdriveApiUrl, tempAudio, {
+              Authorization: `Bearer ${ACCESS_TOKEN.trim()}`
+            });
+            if (ok) extractedAudio = true;
+          } else {
+            const stat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
+            if (stat.size > 5000) extractedAudio = true;
           }
         } catch (apiErr: unknown) {
           const msg = apiErr instanceof Error ? apiErr.message : String(apiErr);
@@ -620,14 +684,24 @@ export async function runVideoToText(fileIdOrUrl: string) {
         console.log("2e. Trying GDrive API v3 with GOOGLE_DRIVE_API_KEY...");
         try {
           const gdriveApiUrl = `https://www.googleapis.com/drive/v3/files/${cleanFileId}?alt=media&key=${GOOGLE_DRIVE_API_KEY.trim()}`;
-          await runFFmpeg([
-            "-rw_timeout", "15000000",
-            "-i", gdriveApiUrl,
-            "-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", tempAudio
-          ]);
-          const stat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
-          if (stat.size > 5000) {
-            extractedAudio = true;
+          let ffmpegOk = false;
+          try {
+            await runFFmpeg([
+              "-rw_timeout", "15000000",
+              "-i", gdriveApiUrl,
+              "-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", tempAudio
+            ]);
+            ffmpegOk = true;
+          } catch {
+            console.warn("FFmpeg API Key stream failed or not installed. Downloading directly via HTTPS stream...");
+          }
+
+          if (!ffmpegOk) {
+            const ok = await downloadDirectMedia(gdriveApiUrl, tempAudio, {});
+            if (ok) extractedAudio = true;
+          } else {
+            const stat = await fs.stat(tempAudio).catch(() => ({ size: 0 }));
+            if (stat.size > 5000) extractedAudio = true;
           }
         } catch (apiErr: unknown) {
           const msg = apiErr instanceof Error ? apiErr.message : String(apiErr);
@@ -652,9 +726,9 @@ export async function runVideoToText(fileIdOrUrl: string) {
       // Step 3: Transcribe via Deepgram Nova-3 or Groq Whisper
       const formattedSegments = await transcribeAudioFile(tempAudio);
 
-      // Save audio to public uploads directory for playback
+      // Save audio to public uploads directory for playback (if writable)
       const uploadsDir = path.join(/*turbopackIgnore: true*/ process.cwd(), "public", "uploads");
-      await fs.mkdir(uploadsDir, { recursive: true });
+      await fs.mkdir(uploadsDir, { recursive: true }).catch(() => {});
       const finalAudioPath = path.join(uploadsDir, `audio_gdrive_${cleanFileId}_${timestamp}.mp3`);
       await fs.copyFile(tempAudio, finalAudioPath).catch(() => {});
       const publicAudioUrl = `/uploads/audio_gdrive_${cleanFileId}_${timestamp}.mp3`;
@@ -693,8 +767,8 @@ export async function uploadAndExtract(formData: FormData) {
 
     const timestamp = Date.now();
     const inputExt = path.extname(file.name) || '.mp4';
-    const inputFilePath = path.join(/*turbopackIgnore: true*/ process.cwd(), `tmp_upload_${timestamp}${inputExt}`);
-    const outputAudio = path.join(/*turbopackIgnore: true*/ process.cwd(), `audio_${timestamp}.mp3`);
+    const inputFilePath = path.join(os.tmpdir(), `tmp_upload_${timestamp}${inputExt}`);
+    const outputAudio = path.join(os.tmpdir(), `audio_${timestamp}.mp3`);
 
     try {
         // Step 1: Save the uploaded file to disk
@@ -712,15 +786,23 @@ export async function uploadAndExtract(formData: FormData) {
             "-y",
             outputAudio
         ];
-        await runFFmpeg(args);
-        console.log("   -> Audio successfully extracted!");
+        let ffmpegOk = false;
+        try {
+            await runFFmpeg(args);
+            ffmpegOk = true;
+            console.log("   -> Audio successfully extracted!");
+        } catch {
+            console.warn("   -> FFmpeg conversion failed or not available. Using uploaded file directly for Deepgram...");
+            await fs.copyFile(inputFilePath, outputAudio).catch(() => {});
+        }
 
         // Step 3: Transcribe via Deepgram Nova-3 or Groq Whisper
-        const formattedSegments = await transcribeAudioFile(outputAudio);
+        const targetAudio = ffmpegOk ? outputAudio : inputFilePath;
+        const formattedSegments = await transcribeAudioFile(targetAudio);
 
-        // Save audio to public uploads directory for playback
+        // Save audio to public uploads directory for playback (if writable)
         const uploadsDir = path.join(/*turbopackIgnore: true*/ process.cwd(), "public", "uploads");
-        await fs.mkdir(uploadsDir, { recursive: true });
+        await fs.mkdir(uploadsDir, { recursive: true }).catch(() => {});
         const finalAudioPath = path.join(uploadsDir, `audio_${timestamp}.mp3`);
         await fs.copyFile(outputAudio, finalAudioPath).catch(() => {});
         const publicAudioUrl = `/uploads/audio_${timestamp}.mp3`;
