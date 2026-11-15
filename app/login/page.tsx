@@ -14,18 +14,27 @@ export default function LoginPage() {
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [rememberMe, setRememberMe] = useState(false); // State untuk ingat perangkat
+    const [loading, setLoading] = useState(false);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (loading) return;
 
-        // Mengirim email, password, dan rememberMe
-        const hasil = await loginUser(email, password, rememberMe);
+        setLoading(true);
+        try {
+            // Mengirim email, password, dan rememberMe
+            const hasil = await loginUser(email, password, rememberMe);
 
-        if (hasil.success === true) {
-            alert(hasil.message);
-            router.push("/dashboard");
-        } else {
-            alert(hasil.message);
+            if (hasil.success === true) {
+                alert(hasil.message);
+                router.push("/dashboard");
+            } else {
+                alert(hasil.message);
+                setLoading(false);
+            }
+        } catch {
+            alert("Terjadi kesalahan sistem");
+            setLoading(false);
         }
     }
 
@@ -54,9 +63,10 @@ export default function LoginPage() {
                             </div>
                             <input
                                 type="email"
-                                className="w-full pl-10 pr-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-900 font-medium placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors"
+                                className="w-full pl-10 pr-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-900 font-medium placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                 placeholder="nama.dokter@karlabionics.co.id"
                                 required
+                                disabled={loading}
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                             />
@@ -79,9 +89,10 @@ export default function LoginPage() {
                             </div>
                             <input
                                 type={showPassword ? "text" : "password"}
-                                className={`w-full pl-10 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-900 font-medium placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors ${!showPassword && password.length > 0 ? "tracking-widest" : ""}`}
+                                className={`w-full pl-10 pr-10 py-2.5 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-900 font-medium placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${!showPassword && password.length > 0 ? "tracking-widest" : ""}`}
                                 placeholder="••••••••"
                                 required
+                                disabled={loading}
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                             />
@@ -90,6 +101,7 @@ export default function LoginPage() {
                                 onClick={() => setShowPassword(!showPassword)}
                                 className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
                                 tabIndex={-1}
+                                disabled={loading}
                             >
                                 {showPassword ? (
                                     <EyeOff className="h-4 w-4" />
@@ -106,8 +118,9 @@ export default function LoginPage() {
                             id="remember-me"
                             type="checkbox"
                             checked={rememberMe}
+                            disabled={loading}
                             onChange={(e) => setRememberMe(e.target.checked)}
-                            className="h-3.5 w-3.5 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                            className="h-3.5 w-3.5 text-teal-600 border-gray-300 rounded focus:ring-teal-500 disabled:opacity-60 disabled:cursor-not-allowed"
                         />
                         <label htmlFor="remember-me" className="ml-2 block text-xs text-gray-600 cursor-pointer">
                             Ingat perangkat ini
@@ -117,10 +130,11 @@ export default function LoginPage() {
                     {/* Submit Button */}
                     <button
                         type="submit"
-                        className="w-full bg-[#0F766E] text-white py-2.5 px-4 rounded-lg hover:bg-teal-800 transition duration-300 flex justify-center items-center space-x-2 text-sm font-medium shadow-sm"
+                        disabled={loading}
+                        className="w-full bg-[#0F766E] text-white py-2.5 px-4 rounded-lg hover:bg-teal-800 transition duration-300 flex justify-center items-center space-x-2 text-sm font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                     >
-                        <span>Masuk ke Dashboard</span>
-                        <ArrowRight className="w-4 h-4" />
+                        <span>{loading ? "Memproses..." : "Masuk ke Dashboard"}</span>
+                        {!loading && <ArrowRight className="w-4 h-4" />}
                     </button>
                 </form>
             </div>

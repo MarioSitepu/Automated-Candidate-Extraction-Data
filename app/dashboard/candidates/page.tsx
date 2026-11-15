@@ -42,6 +42,7 @@ export default function CandidateListPage() {
   }, [search, statusFilter, genderFilter]);
 
   const handleDelete = async (id: string, nama: string) => {
+    if (deletingId) return;
     if (!confirm(`Apakah Anda yakin ingin menghapus kandidat "${nama}" dari database?`)) {
       return;
     }
@@ -174,9 +175,9 @@ export default function CandidateListPage() {
                           </Link>
                           <button 
                             onClick={() => handleDelete(candidate.id, candidate.nama)}
-                            disabled={deletingId === candidate.id}
+                            disabled={Boolean(deletingId)}
                             title="Hapus Kandidat"
-                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded border border-gray-200 hover:border-red-200 transition-colors disabled:opacity-50 cursor-pointer"
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded border border-gray-200 hover:border-red-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer"
                           >
                             {deletingId === candidate.id ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin text-red-600" />

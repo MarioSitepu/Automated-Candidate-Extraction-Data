@@ -113,6 +113,15 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
   };
 
   const startUpload = async (file: File) => {
+    if (
+      currentTask &&
+      (currentTask.status === "transcribing" ||
+        currentTask.status === "extracting" ||
+        currentTask.status === "saving")
+    ) {
+      return;
+    }
+
     setCurrentTask({
       fileName: file.name,
       status: "transcribing",
@@ -254,6 +263,15 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
   };
 
   const startGDriveUpload = async (fileIdOrUrl: string) => {
+    if (
+      currentTask &&
+      (currentTask.status === "transcribing" ||
+        currentTask.status === "extracting" ||
+        currentTask.status === "saving")
+    ) {
+      return;
+    }
+
     setCurrentTask({
       fileName: `Google Drive (${fileIdOrUrl.slice(0, 18)}...)`,
       status: "transcribing",

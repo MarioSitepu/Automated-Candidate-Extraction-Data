@@ -13,25 +13,34 @@ export default function RegisterPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
+    const [loading, setLoading] = useState(false);
 
     const handleRegister = async (e: React.FormEvent) => {
-        e.preventDefault()
+        e.preventDefault();
+        if (loading) return;
 
         if (password !== confirmPassword){
-            toast.error("Gagal mendaftar, Password dan Konfirmasi Password tidak sama!")
+            toast.error("Gagal mendaftar, Password dan Konfirmasi Password tidak sama!");
             return;
         }
 
-        // mengirim email dan password ke backend
-        const hasil = await registerUser(email, password);
+        setLoading(true);
+        try {
+            // mengirim email dan password ke backend
+            const hasil = await registerUser(email, password);
 
-        if (hasil.success) {
-            toast.success(hasil.message);
-            // kalau berhasil daftar, arahkan user ke halaman login
-            router.push("/login");
-        } else {
-            // kalau gagal , tampilkan error
-            toast.error(hasil.message);
+            if (hasil.success) {
+                toast.success(hasil.message);
+                // kalau berhasil daftar, arahkan user ke halaman login
+                router.push("/login");
+            } else {
+                // kalau gagal , tampilkan error
+                toast.error(hasil.message);
+                setLoading(false);
+            }
+        } catch {
+            toast.error("Terjadi kesalahan sistem saat mendaftar");
+            setLoading(false);
         }
     };
 
@@ -46,8 +55,9 @@ export default function RegisterPage() {
                         <input 
                             type="email"
                             value={email}
+                            disabled={loading}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border disabled:opacity-60 disabled:cursor-not-allowed"
                             required
                         />
                     </div>
@@ -56,8 +66,9 @@ export default function RegisterPage() {
                         <input 
                             type="password"
                             value={password}
+                            disabled={loading}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border disabled:opacity-60 disabled:cursor-not-allowed"
                             required
                         />
                     </div>
@@ -67,17 +78,19 @@ export default function RegisterPage() {
                         <input 
                             type="password"
                             value={confirmPassword}
+                            disabled={loading}
                             onChange={(e) => setConfirmPassword(e.target.value)}
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border disabled:opacity-60 disabled:cursor-not-allowed"
                             required
                         />
                     </div>
 
                     <button 
                         type="submit"
-                        className="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600 transition"
+                        disabled={loading}
+                        className="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                     >
-                        Daftar Sekarang
+                        {loading ? "Mendaftar..." : "Daftar Sekarang"}
                     </button>
                 </form>
                 <div className="mt-4 text-center text-sm text-gray-600">

@@ -22,6 +22,7 @@ function SidebarStorageWidget() {
   const [loading, setLoading] = useState(true);
 
   const refreshStorage = async () => {
+    if (loading) return;
     setLoading(true);
     const res = await getDatabaseStorageStats();
     if (res.success && res.stats) {
@@ -58,8 +59,9 @@ function SidebarStorageWidget() {
         </div>
         <button 
           onClick={refreshStorage} 
+          disabled={loading}
           title="Refresh Storage Status"
-          className="text-gray-400 hover:text-teal-700 transition-colors p-0.5"
+          className="text-gray-400 hover:text-teal-700 transition-colors p-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin text-teal-600" : ""}`} />
         </button>
@@ -95,9 +97,12 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const handleLogout = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loggingOut) return;
+    setLoggingOut(true);
     await logoutUser();
   };
 
@@ -163,10 +168,11 @@ export default function DashboardLayout({
               <form onSubmit={handleLogout}>
                 <button
                   type="submit"
-                  className="flex items-center space-x-3 text-gray-600 hover:text-red-600 px-4 py-2.5 w-full text-left font-medium transition-colors cursor-pointer"
+                  disabled={loggingOut}
+                  className="flex items-center space-x-3 text-gray-600 hover:text-red-600 px-4 py-2.5 w-full text-left font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 >
                   <LogOut className="w-5 h-5" />
-                  <span>Logout</span>
+                  <span>{loggingOut ? "Keluar..." : "Logout"}</span>
                 </button>
               </form>
             </div>

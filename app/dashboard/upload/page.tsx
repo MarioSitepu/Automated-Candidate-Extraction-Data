@@ -14,6 +14,7 @@ export default function UploadPage() {
   const [gdriveError, setGdriveError] = useState("");
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isProcessing) return;
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
@@ -30,6 +31,7 @@ export default function UploadPage() {
 
   const handleGDriveSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isProcessing) return;
     if (!gdriveInput.trim()) {
       setGdriveError("Silakan masukkan Link atau File ID Google Drive.");
       return;
@@ -186,11 +188,12 @@ export default function UploadPage() {
                 />
                 <button 
                   type="button"
+                  disabled={Boolean(isProcessing)}
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-6 py-3.5 bg-teal-600 text-white hover:bg-teal-700 transition-colors rounded-xl font-semibold shadow-sm w-full cursor-pointer flex items-center justify-center space-x-2"
+                  className="px-6 py-3.5 bg-teal-600 text-white hover:bg-teal-700 transition-colors rounded-xl font-semibold shadow-sm w-full cursor-pointer flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 >
                   <UploadCloud className="w-5 h-5" />
-                  <span>Pilih File Rekaman (Audio/Video)</span>
+                  <span>{isProcessing ? "Sedang Memproses..." : "Pilih File Rekaman (Audio/Video)"}</span>
                 </button>
                 <p className="text-[11px] text-gray-400">Dukungan format MP3, WAV, MP4, MOV, WebM (&lt; 500 MB)</p>
               </div>
@@ -206,9 +209,10 @@ export default function UploadPage() {
                   <input 
                     type="text" 
                     value={gdriveInput}
+                    disabled={Boolean(isProcessing)}
                     onChange={(e) => setGdriveInput(e.target.value)}
                     placeholder="https://drive.google.com/file/d/1A2B3C4D5E6F/view?usp=sharing"
-                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                   {gdriveError && (
                     <p className="text-xs text-red-600 mt-1 font-medium">{gdriveError}</p>
@@ -226,10 +230,11 @@ export default function UploadPage() {
 
                 <button 
                   type="submit"
-                  className="px-6 py-3 bg-teal-600 text-white hover:bg-teal-700 transition-colors rounded-xl font-semibold shadow-sm w-full cursor-pointer flex items-center justify-center space-x-2"
+                  disabled={Boolean(isProcessing)}
+                  className="px-6 py-3 bg-teal-600 text-white hover:bg-teal-700 transition-colors rounded-xl font-semibold shadow-sm w-full cursor-pointer flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 >
                   <Sparkles className="w-4 h-4" />
-                  <span>Mulai Ekstraksi AI dari Google Drive</span>
+                  <span>{isProcessing ? "Sedang Memproses..." : "Mulai Ekstraksi AI dari Google Drive"}</span>
                 </button>
               </form>
             )}
