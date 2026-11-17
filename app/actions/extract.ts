@@ -466,14 +466,23 @@ export async function extractGDriveFileId(input: string): Promise<string> {
     return "";
 }
 
-// Server action providing Deepgram client key for direct browser-to-Deepgram uploads
-// Bypasses Vercel serverless 4.5 MB request body limit completely
-export async function getDeepgramClientKey(): Promise<string> {
-    const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
-    if (!DEEPGRAM_API_KEY || DEEPGRAM_API_KEY.trim().length === 0) {
-        throw new Error("Gagal Transkripsi: DEEPGRAM_API_KEY belum diset atau kosong di file .env");
+// Server action providing Deepgram client key safely without throwing unhandled exceptions
+export async function getDeepgramClientKey(): Promise<{ success: boolean; key?: string; message?: string }> {
+    try {
+        const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
+        if (!DEEPGRAM_API_KEY || DEEPGRAM_API_KEY.trim().length === 0) {
+            return {
+                success: false,
+                message: "DEEPGRAM_API_KEY belum dikonfigurasi di Vercel Dashboard (Project Settings -> Environment Variables)."
+            };
+        }
+        return { success: true, key: DEEPGRAM_API_KEY.trim() };
+    } catch (err: unknown) {
+        return {
+            success: false,
+            message: err instanceof Error ? err.message : "Gagal membaca DEEPGRAM_API_KEY"
+        };
     }
-    return DEEPGRAM_API_KEY.trim();
 }
 
 // Helper to transcribe audio EXCLUSIVELY via Deepgram Nova-3 (with Diarization)

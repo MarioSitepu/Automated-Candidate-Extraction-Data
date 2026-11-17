@@ -156,7 +156,29 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       );
 
       // Step 2: Direct browser-to-Deepgram upload (CORS-supported, up to 2 GB, bypasses Vercel 4.5 MB limit)
-      const deepgramKey = await getDeepgramClientKey();
+      let deepgramKey = "";
+      try {
+        const keyApi = await fetch("/api/deepgram-key");
+        const keyJson = await keyApi.json();
+        if (keyJson.success && keyJson.key) {
+          deepgramKey = keyJson.key;
+        } else {
+          throw new Error(keyJson.message || "Gagal mendapatkan DEEPGRAM_API_KEY.");
+        }
+      } catch (keyErr: unknown) {
+        // Fallback to Server Action
+        const actionRes = await getDeepgramClientKey();
+        if (actionRes.success && actionRes.key) {
+          deepgramKey = actionRes.key;
+        } else {
+          throw new Error(
+            (keyErr instanceof Error ? keyErr.message : "") ||
+            actionRes.message ||
+            "DEEPGRAM_API_KEY belum dikonfigurasi di Environment Variables Vercel."
+          );
+        }
+      }
+
       const dgUrl = "https://api.deepgram.com/v1/listen?model=nova-3&language=id&smart_format=true&punctuate=true&utterances=true&diarize=true";
 
       const dgRes = await fetch(dgUrl, {
