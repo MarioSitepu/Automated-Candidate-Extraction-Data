@@ -5,7 +5,7 @@ import { Loader2, CheckCircle2, AlertCircle, X, ChevronRight } from "lucide-reac
 import Link from "next/link";
 import { extractDataFromTranscript, runVideoToText, getDeepgramClientKey } from "../actions/extract";
 import { createCandidate } from "../actions/candidate";
-import { compressAudioInBrowser, formatDeepgramUtterances } from "../utils/clientAudio";
+import { compressAudioInBrowser, formatDeepgramUtterances, type DeepgramApiResponse } from "../utils/clientAudio";
 
 interface ExtractedCandidateData {
   nama?: string;
@@ -159,22 +159,24 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       let deepgramKey = "";
       try {
         const keyApi = await fetch("/api/deepgram-key");
-        const keyJson = await keyApi.json();
-        if (keyJson.success && keyJson.key) {
-          deepgramKey = keyJson.key;
-        } else {
-          throw new Error(keyJson.message || "Gagal mendapatkan DEEPGRAM_API_KEY.");
+        const contentType = keyApi.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const keyJson = await keyApi.json().catch(() => ({}));
+          if (keyJson.success && keyJson.key) {
+            deepgramKey = keyJson.key;
+          }
         }
-      } catch (keyErr: unknown) {
+      } catch {}
+
+      if (!deepgramKey) {
         // Fallback to Server Action
         const actionRes = await getDeepgramClientKey();
         if (actionRes.success && actionRes.key) {
           deepgramKey = actionRes.key;
         } else {
           throw new Error(
-            (keyErr instanceof Error ? keyErr.message : "") ||
             actionRes.message ||
-            "DEEPGRAM_API_KEY belum dikonfigurasi di Environment Variables Vercel."
+            "DEEPGRAM_API_KEY belum dikonfigurasi di Environment Variables Vercel. Harap tambahkan DEEPGRAM_API_KEY pada Vercel Dashboard -> Project Settings -> Environment Variables."
           );
         }
       }
@@ -191,12 +193,26 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (!dgRes.ok) {
-        const errJson = await dgRes.json().catch(() => ({}));
-        throw new Error(errJson.err_msg || errJson.message || `Gagal transkripsi Deepgram (Status HTTP ${dgRes.status}).`);
+        let errMsg = `Gagal transkripsi Deepgram (Status HTTP ${dgRes.status})`;
+        try {
+          const errJson = await dgRes.json();
+          if (errJson?.err_msg || errJson?.message) {
+            errMsg = errJson.err_msg || errJson.message;
+          }
+        } catch {
+          const rawErr = await dgRes.text().catch(() => "");
+          if (rawErr) errMsg += `: ${rawErr.slice(0, 150)}`;
+        }
+        throw new Error(errMsg);
       }
 
-      const dgData = await dgRes.json();
-      const segments = formatDeepgramUtterances(dgData);
+      let dgData: unknown;
+      try {
+        dgData = await dgRes.json();
+      } catch {
+        throw new Error("Respon dari Deepgram API tidak dalam format JSON yang valid.");
+      }
+      const segments = formatDeepgramUtterances(dgData as DeepgramApiResponse);
       const fullText = segments.map((s: { text: string }) => s.text).join("\n");
 
       // Step 3: Extract Data via LLaMA 3

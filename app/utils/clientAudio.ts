@@ -219,7 +219,7 @@ interface DeepgramParagraphSentence {
   end?: number;
 }
 
-interface DeepgramApiResponse {
+export interface DeepgramApiResponse {
   results?: {
     utterances?: DeepgramUtteranceItem[];
     channels?: Array<{
