@@ -141,10 +141,22 @@ export default function UploadPage() {
             <div className="pt-1 flex items-center space-x-2">
               <button
                 onClick={dismissTask}
-                className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 transition-colors shadow-sm cursor-pointer"
+                className="px-3 py-1.5 bg-gray-200 text-gray-800 rounded-lg text-xs font-semibold hover:bg-gray-300 transition-colors shadow-sm cursor-pointer"
               >
-                Tutup & Coba Lagi
+                Tutup
               </button>
+              {currentTask.errorMsg?.includes("Upload File") && (
+                <button
+                  onClick={() => {
+                    dismissTask();
+                    setActiveTab("file");
+                  }}
+                  className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-semibold hover:bg-teal-700 transition-colors shadow-sm cursor-pointer flex items-center space-x-1.5"
+                >
+                  <HardDrive className="w-3.5 h-3.5" />
+                  <span>Pindah ke Tab Upload File Lokal</span>
+                </button>
+              )}
             </div>
           </div>
         ) : (
