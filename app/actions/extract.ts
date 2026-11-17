@@ -650,21 +650,27 @@ export async function runVideoToText(fileIdOrUrl: string) {
 
       // Stage 0: Direct Cloud-to-Cloud Deepgram URL Transcription
       // Completely bypasses downloading 1GB+ files to local disk, Vercel 512MB /tmp limit, and FFmpeg requirements!
-      if (resolvedStream.url && !resolvedStream.isQuotaExceeded) {
-        console.log("0. Attempting direct Deepgram Cloud transcription from resolved stream URL...");
+      // Even if Google Drive throttled Vercel's IP, Deepgram's cloud infrastructure often downloads directly!
+      const directCandidates = [
+        `https://drive.usercontent.google.com/download?id=${cleanFileId}&confirm=t&export=download`,
+        resolvedStream.url,
+      ].filter(Boolean);
+
+      for (const directUrl of directCandidates) {
+        console.log("0. Attempting direct Deepgram Cloud transcription from URL:", directUrl);
         try {
-          const directSegments = await transcribeAudioUrl(resolvedStream.url);
+          const directSegments = await transcribeAudioUrl(directUrl);
           if (directSegments && directSegments.length > 0) {
             console.log("   -> Direct Deepgram Cloud transcription SUCCEEDED!");
             return {
               success: true,
               segments: directSegments,
-              audioUrl: resolvedStream.url,
+              audioUrl: directUrl,
               fileId: cleanFileId,
             };
           }
         } catch (directErr) {
-          console.warn("   -> Direct Deepgram URL transcription failed, falling back to local extraction pipeline:", directErr);
+          console.warn("   -> Direct Deepgram URL transcription failed for", directUrl, directErr);
         }
       }
 

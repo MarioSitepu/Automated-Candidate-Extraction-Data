@@ -1,5 +1,7 @@
 "use client";
 
+export const maxDuration = 300; // 5 minutes max on Vercel
+
 import { useRef, useState } from "react";
 import { Loader2, UploadCloud, CheckCircle2, HardDrive, Link as LinkIcon, Sparkles, AlertCircle, X } from "lucide-react";
 import { useUpload } from "../../context/UploadContext";
@@ -18,10 +20,10 @@ export default function UploadPage() {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
-    const maxSizeBytes = 500 * 1024 * 1024; // 500 MB
+    const maxSizeBytes = 2500 * 1024 * 1024; // 2.5 GB
     if (selectedFile.size > maxSizeBytes) {
       const sizeMb = (selectedFile.size / (1024 * 1024)).toFixed(0);
-      alert(`⚠️ Peringatan Ukuran File:\nUkuran file Anda (${sizeMb} MB) melebihi batas upload langsung (500 MB).\n\nSilakan beralih ke tab "Google Drive (Bebas Ukuran)" di atas untuk memproses file video berukuran besar tanpa hambatan!`);
+      alert(`⚠️ Peringatan Ukuran File:\nUkuran file Anda (${sizeMb} MB) melebihi batas upload langsung (2.5 GB).\n\nSilakan pilih file dengan ukuran lebih kecil.`);
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
@@ -195,7 +197,7 @@ export default function UploadPage() {
                   <UploadCloud className="w-5 h-5" />
                   <span>{isProcessing ? "Sedang Memproses..." : "Pilih File Rekaman (Audio/Video)"}</span>
                 </button>
-                <p className="text-[11px] text-gray-400">Dukungan format MP3, WAV, MP4, MOV, WebM (&lt; 500 MB)</p>
+                <p className="text-[11px] text-gray-400">Dukungan format MP4, MOV, MKV, WebM, MP3, WAV (Hingga 2.5 GB — audio diekstrak otomatis langsung di browser)</p>
               </div>
             )}
 
