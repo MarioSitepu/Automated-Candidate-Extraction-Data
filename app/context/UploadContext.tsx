@@ -3,9 +3,9 @@
 import React, { createContext, useContext, useState } from "react";
 import { Loader2, CheckCircle2, AlertCircle, X, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { extractDataFromTranscript, runVideoToText } from "../actions/extract";
+import { extractDataFromTranscript, runVideoToText, getDeepgramClientKey } from "../actions/extract";
 import { createCandidate } from "../actions/candidate";
-import { compressAudioInBrowser } from "../utils/clientAudio";
+import { compressAudioInBrowser, formatDeepgramUtterances } from "../utils/clientAudio";
 
 interface ExtractedCandidateData {
   nama?: string;
@@ -135,38 +135,49 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
     });
 
     try {
-      // Step 1: Compress large video/audio files in browser to lightweight WAV (~1-3 MB)
-      // This bypasses Vercel's 4.5 MB serverless body limit & 60s timeout completely!
-      const fileToSend = await compressAudioInBrowser(file, (progressText) => {
-        setCurrentTask((prev) => prev ? { ...prev, progressText } : null);
-      });
+      // Step 1: Extract AAC audio in browser (turns 1 GB video into ~10-20 MB in seconds)
+      let fileToSend: File = file;
+      try {
+        fileToSend = await compressAudioInBrowser(file, (progressText) => {
+          setCurrentTask((prev) => prev ? { ...prev, progressText } : null);
+        });
+      } catch (audioErr) {
+        console.warn("Client audio extraction fell back to source file:", audioErr);
+      }
 
-      setCurrentTask((prev) => prev ? { ...prev, progressText: "Mengunggah dan mentranskripsi audio via Deepgram Nova-3..." } : null);
+      const sizeMb = (fileToSend.size / (1024 * 1024)).toFixed(1);
+      setCurrentTask((prev) =>
+        prev
+          ? {
+              ...prev,
+              progressText: `Mentranskripsi audio (${sizeMb} MB) via Deepgram Nova-3 AI...`,
+            }
+          : null
+      );
 
-      const apiRes = await fetch("/api/upload", {
+      // Step 2: Direct browser-to-Deepgram upload (CORS-supported, up to 2 GB, bypasses Vercel 4.5 MB limit)
+      const deepgramKey = await getDeepgramClientKey();
+      const dgUrl = "https://api.deepgram.com/v1/listen?model=nova-3&language=id&smart_format=true&punctuate=true&utterances=true&diarize=true";
+
+      const dgRes = await fetch(dgUrl, {
         method: "POST",
         headers: {
-          "x-file-name": encodeURIComponent(fileToSend.name),
-          "content-type": fileToSend.type || "application/octet-stream",
+          "Authorization": `Token ${deepgramKey}`,
+          "Content-Type": fileToSend.type || "application/octet-stream",
         },
         body: fileToSend,
       });
 
-      if (!apiRes.ok) {
-        const errJson = await apiRes.json().catch(() => ({}));
-        throw new Error(errJson.message || `Gagal mengunggah file ke server (Status HTTP ${apiRes.status}).`);
+      if (!dgRes.ok) {
+        const errJson = await dgRes.json().catch(() => ({}));
+        throw new Error(errJson.err_msg || errJson.message || `Gagal transkripsi Deepgram (Status HTTP ${dgRes.status}).`);
       }
 
-      const extractRes = await apiRes.json();
-
-      if (!extractRes.success) {
-        throw new Error(extractRes.message || "Gagal mentranskripsi file audio.");
-      }
-
-      const segments = extractRes.segments || [];
+      const dgData = await dgRes.json();
+      const segments = formatDeepgramUtterances(dgData);
       const fullText = segments.map((s: { text: string }) => s.text).join("\n");
 
-      // Step 2: Extract Data via LLaMA 3
+      // Step 3: Extract Data via LLaMA 3
       setCurrentTask((prev) =>
         prev
           ? {
@@ -180,7 +191,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       const aiResult = await extractDataFromTranscript(fullText);
       const extractedData: ExtractedCandidateData = aiResult.success && aiResult.data ? aiResult.data : {};
 
-      // Step 3: Save to Supabase DB
+      // Step 4: Save to Supabase DB
       setCurrentTask((prev) =>
         prev
           ? {
@@ -200,7 +211,6 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         ekonomi: extractedData?.ekonomi || "-",
         motivasi: extractedData?.motivasi || "-",
         status: "Ready",
-        audioUrl: extractRes.audioUrl || undefined,
         transcriptSegments: segments,
         assessmentJson: extractedData?.assessmentJson || undefined,
       });
@@ -209,7 +219,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         throw new Error(dbRes.message || "Gagal menyimpan kandidat ke database.");
       }
 
-      // Step 4: Completed
+      // Step 5: Completed
       setCurrentTask({
         fileName: file.name,
         status: "completed",
@@ -229,28 +239,12 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
 
     } catch (error: unknown) {
       console.error("Background upload error:", error);
-      let formattedMsg = error instanceof Error ? error.message : "Gagal memproses file.";
-
-      const isSizeError =
-        formattedMsg.includes("Unexpected end of form") ||
-        formattedMsg.includes("maxBodySize") ||
-        formattedMsg.includes("payload") ||
-        formattedMsg.includes("413");
-
-      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-
-      if (isSizeError) {
-        if (file.size > 500 * 1024 * 1024) {
-          formattedMsg = `⚠️ Ukuran file Anda (${sizeMb} MB) melebihi batas upload langsung (500 MB). Harap gunakan tab 'Google Drive' untuk memproses file berukuran besar tanpa hambatan.`;
-        } else {
-          formattedMsg = `⚠️ Gagal mengunggah file (${sizeMb} MB) ke server. Server Next.js menolak payload request. Silakan muat ulang halaman (F5) atau gunakan tab Google Drive.`;
-        }
-      }
+      const formattedMsg = error instanceof Error ? error.message : "Gagal memproses file.";
 
       setCurrentTask({
         fileName: file.name,
         status: "error",
-        progressText: "Gagal mengunggah file lokal.",
+        progressText: "Gagal memproses file lokal.",
         errorMsg: formattedMsg,
       });
 

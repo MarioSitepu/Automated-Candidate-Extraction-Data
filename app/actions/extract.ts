@@ -466,6 +466,16 @@ export async function extractGDriveFileId(input: string): Promise<string> {
     return "";
 }
 
+// Server action providing Deepgram client key for direct browser-to-Deepgram uploads
+// Bypasses Vercel serverless 4.5 MB request body limit completely
+export async function getDeepgramClientKey(): Promise<string> {
+    const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
+    if (!DEEPGRAM_API_KEY || DEEPGRAM_API_KEY.trim().length === 0) {
+        throw new Error("Gagal Transkripsi: DEEPGRAM_API_KEY belum diset atau kosong di file .env");
+    }
+    return DEEPGRAM_API_KEY.trim();
+}
+
 // Helper to transcribe audio EXCLUSIVELY via Deepgram Nova-3 (with Diarization)
 export async function transcribeAudioFile(audioPath: string) {
     const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;

@@ -130,6 +130,13 @@ export async function extractAudioFromMp4(
     throw new Error("Trek audio tidak valid atau tidak dapat diakses.");
   }
 
+  // Ensure sample lists are fully compiled
+  if (typeof mp4box.buildSampleLists === "function") {
+    try {
+      mp4box.buildSampleLists();
+    } catch {}
+  }
+
   const fullTrack = mp4box.getTrackById((audioTrack as MP4Track).id);
   const samples: MP4Sample[] = fullTrack?.samples || [];
 
@@ -161,15 +168,22 @@ export async function extractAudioFromMp4(
     const groupBlob = file.slice(group.offset, group.offset + group.size);
     const groupBuf = new Uint8Array(await groupBlob.arrayBuffer());
 
-    let groupInnerOffset = 0;
+    // Single pre-allocated Uint8Array per group for blazing speed and zero memory leaks
+    const totalGroupOutputSize = group.size + group.samples.length * 7;
+    const groupOutput = new Uint8Array(totalGroupOutputSize);
+
+    let inOffset = 0;
+    let outOffset = 0;
     for (const s of group.samples) {
       const header = createAdtsHeader(s.size, sRate, sChan);
-      const sampleBytes = groupBuf.subarray(groupInnerOffset, groupInnerOffset + s.size);
-      adtsParts.push(header as unknown as BlobPart);
-      adtsParts.push(sampleBytes as unknown as BlobPart);
-      groupInnerOffset += s.size;
+      groupOutput.set(header, outOffset);
+      outOffset += 7;
+      groupOutput.set(groupBuf.subarray(inOffset, inOffset + s.size), outOffset);
+      outOffset += s.size;
+      inOffset += s.size;
     }
 
+    adtsParts.push(groupOutput);
     processedGroups++;
     if (onProgress && groups.length > 10 && processedGroups % Math.ceil(groups.length / 10) === 0) {
       const percent = Math.round((processedGroups / groups.length) * 100);
@@ -180,6 +194,103 @@ export async function extractAudioFromMp4(
   const cleanBaseName = file.name.replace(/\.[^/.]+$/, "");
   const aacBlob = new Blob(adtsParts, { type: "audio/aac" });
   return new File([aacBlob], `${cleanBaseName}.aac`, { type: "audio/aac" });
+}
+
+export interface FormattedSegment {
+  id: number;
+  speaker?: number | string;
+  startStr: string;
+  endStr: string;
+  text: string;
+  rawStart?: number;
+}
+
+interface DeepgramUtteranceItem {
+  transcript?: string;
+  speaker?: number | string;
+  start?: number;
+  end?: number;
+}
+
+interface DeepgramParagraphSentence {
+  text?: string;
+  speaker?: number | string;
+  start?: number;
+  end?: number;
+}
+
+interface DeepgramApiResponse {
+  results?: {
+    utterances?: DeepgramUtteranceItem[];
+    channels?: Array<{
+      alternatives?: Array<{
+        transcript?: string;
+        paragraphs?: {
+          paragraphs?: Array<{
+            sentences?: DeepgramParagraphSentence[];
+          }>;
+        };
+      }>;
+    }>;
+  };
+}
+
+export function formatDeepgramUtterances(response: DeepgramApiResponse): FormattedSegment[] {
+  function formatTime(seconds?: number): string {
+    if (seconds === undefined || isNaN(seconds)) return "00:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  }
+
+  const utterances = response?.results?.utterances || [];
+  let formattedSegments: FormattedSegment[] = utterances.length > 0
+    ? utterances.map((u, index: number) => {
+        const rawText = (u.transcript || "").trim();
+        const cleanText = rawText.replace(/^\[Speaker\s*\d+\]:\s*/i, "");
+        return {
+          id: index + 1,
+          speaker: u.speaker !== undefined ? u.speaker : undefined,
+          startStr: formatTime(u.start),
+          endStr: formatTime(u.end),
+          text: cleanText,
+          rawStart: u.start,
+        };
+      })
+    : (response?.results?.channels?.[0]?.alternatives?.[0]?.paragraphs?.paragraphs || []).flatMap((p) =>
+        (p.sentences || []).map((s, index: number) => {
+          const rawText = (s.text || "").trim();
+          const cleanText = rawText.replace(/^\[Speaker\s*\d+\]:\s*/i, "");
+          return {
+            id: index + 1,
+            speaker: s.speaker !== undefined ? s.speaker : undefined,
+            startStr: formatTime(s.start),
+            endStr: formatTime(s.end),
+            text: cleanText,
+            rawStart: s.start,
+          };
+        })
+      );
+
+  if (!formattedSegments || formattedSegments.length === 0) {
+    const rawTranscript = response?.results?.channels?.[0]?.alternatives?.[0]?.transcript || "";
+    if (rawTranscript.trim()) {
+      formattedSegments = [
+        {
+          id: 1,
+          speaker: undefined,
+          startStr: "00:00",
+          endStr: "00:00",
+          text: rawTranscript.trim(),
+          rawStart: 0,
+        },
+      ];
+    } else {
+      throw new Error("Deepgram tidak menemukan suara/percakapan pada file ini.");
+    }
+  }
+
+  return formattedSegments;
 }
 
 /**
@@ -227,19 +338,19 @@ export async function compressAudioInBrowser(
     }
   }
 
-  // If the extracted audio is now <= 4.2 MB, return it directly!
-  // AAC audio preserves original quality and is natively transcribed by Deepgram Nova-3.
-  if (audioCandidate.size <= 4.2 * 1024 * 1024 && audioCandidate !== file) {
+  // If MP4Box successfully extracted the AAC audio track, return it immediately!
+  // AAC audio preserves original quality and is natively transcribed by Deepgram Nova-3 without limits.
+  if (audioCandidate !== file && audioCandidate.size > 500) {
     if (onProgress) {
       onProgress(
-        `Audio berhasil diekstrak (${(audioCandidate.size / (1024 * 1024)).toFixed(2)} MB). Siap diunggah!`
+        `Audio berhasil diekstrak (${(audioCandidate.size / (1024 * 1024)).toFixed(2)} MB). Siap ditranskripsi!`
       );
     }
     return audioCandidate;
   }
 
-  // Pass 2: If still > 4.2 MB or was a huge audio file, downsample via Web Audio API
-  if (audioCandidate.size > 4.2 * 1024 * 1024) {
+  // Pass 2: If it's a huge uncompressed audio file (e.g. 500 MB WAV), downsample via Web Audio API
+  if (audioCandidate.size > 25 * 1024 * 1024 && !isVideo) {
     if (onProgress) {
       onProgress(
         `Mengompresi file audio (${(audioCandidate.size / (1024 * 1024)).toFixed(2)} MB) di browser...`
@@ -249,21 +360,10 @@ export async function compressAudioInBrowser(
     try {
       const compressedWav = await decodeAndReencodeWav(audioCandidate);
       if (compressedWav && compressedWav.size > 1000) {
-        console.log(
-          `Web Audio downsampled audio: ${(audioCandidate.size / (1024 * 1024)).toFixed(2)} MB -> ${(compressedWav.size / (1024 * 1024)).toFixed(2)} MB`
-        );
         return compressedWav;
       }
     } catch (e) {
-      console.warn("Web Audio decode failed, trying HTML5 Audio Element decoder...", e);
-      try {
-        const html5Compressed = await decodeViaAudioElement(audioCandidate);
-        if (html5Compressed && html5Compressed.size > 1000) {
-          return html5Compressed;
-        }
-      } catch (e2) {
-        console.warn("HTML5 Audio decode skipped:", e2);
-      }
+      console.warn("Web Audio downsample skipped:", e);
     }
   }
 
@@ -310,56 +410,6 @@ function decodeAndReencodeWav(file: File): Promise<File> {
     };
     reader.onerror = (err) => reject(err);
     reader.readAsArrayBuffer(file);
-  });
-}
-
-function decodeViaAudioElement(file: File): Promise<File> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const audio = new Audio();
-    audio.src = url;
-
-    audio.oncanplaythrough = async () => {
-      try {
-        const AudioCtx =
-          window.AudioContext ||
-          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        const ctx = new AudioCtx();
-        const dest = ctx.createMediaStreamDestination();
-        const source = ctx.createMediaElementSource(audio);
-        source.connect(dest);
-
-        const mediaRecorder = new MediaRecorder(dest.stream);
-        const chunks: Blob[] = [];
-
-        mediaRecorder.ondataavailable = (ev) => {
-          if (ev.data.size > 0) chunks.push(ev.data);
-        };
-
-        mediaRecorder.onstop = () => {
-          URL.revokeObjectURL(url);
-          ctx.close().catch(() => {});
-          const blob = new Blob(chunks, { type: "audio/webm" });
-          const cleanName = file.name.replace(/\.[^/.]+$/, "") + "_compressed.webm";
-          resolve(new File([blob], cleanName, { type: "audio/webm" }));
-        };
-
-        mediaRecorder.start();
-        audio.play().catch(reject);
-
-        audio.onended = () => {
-          mediaRecorder.stop();
-        };
-      } catch (err) {
-        URL.revokeObjectURL(url);
-        reject(err);
-      }
-    };
-
-    audio.onerror = (err) => {
-      URL.revokeObjectURL(url);
-      reject(err);
-    };
   });
 }
 
